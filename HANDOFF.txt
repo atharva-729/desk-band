@@ -1,0 +1,309 @@
+DESK BAND: HANDOFF FOR CLAUDE CODE
+==================================
+Written 6 Nov 2026, at the end of a long Claude chat session, so Claude Code can pick up exactly where we stopped.
+Read this whole file once, then README.md (phased plan + checkpoints). CLAUDE.md has the short rules.
+
+
+0. TL;DR
+--------
+Desk Band turns any table into a musical instrument, using only the phone already in your pocket.
+Lay the phone flat on the table and knock nearby spots. The phone's MICROPHONE (spectral "fingerprint" of the knock)
+and MOTION SENSOR (direction of the jolt) work out WHICH spot was hit and HOW HARD. A tiny logistic-regression
+model, trained in the browser from about 60 knocks, sends {zone, confidence, velocity} to the laptop. The laptop plays
+drums, desi percussion, marimba, a melody kit, chords, or user-editable chords, or sends MIDI out.
+
+No extra hardware, no app install, no AI/LLM, no cloud. Phone = a web page. Laptop = Python stdlib server + a web page.
+
+Status: WORKING ON A REAL iPHONE 17 (Atharva played it, Nov 2026, and was very happy: "works so much better").
+The demo build (QR join, training saved on the laptop, "How it hears" explainer panel, camera card, record button)
+is browser-tested but NOT yet used live in a meeting.
+
+Owner: Atharva (innovation team at Straive, manager Anand). Repo to publish: personal GitHub, account
+atharva-729, suggested repo name "desk-band". Work projects go there publicly.
+
+
+1. WHO / HOW ATHARVA LIKES TO WORK (important)
+---------------------------------------------
+- Casual, direct, thinks out loud. Pragmatic over over-engineered.
+- Claude Code does all the technical work while he manages. He often runs about 3 projects in parallel.
+- READMEs in his format: a phased plan Claude Code can follow, what to do and what NOT to do, and a CHECKPOINT after each
+  phase (stop, show results, wait for a go-ahead). README.md already follows this.
+- When a new idea/direction is chosen: first explain it plainly, then quiz him briefly so he understands what it is
+  and what it's trying to achieve, before building.
+- No manual data labelling. Every recording must be self-labelled (prompted spots, guided sessions).
+- Background: mechanical engineering (IIT Ropar) with a CS minor; has worked with hardware a lot. Strong ML/RL/dataviz.
+- Works from home (Chandigarh). Meetings with Anand are ONLINE (screen share).
+- Hardware: iPhone 17 (has a good IMU; phyphox also showed a front depth sensor). He used Chrome on iOS for the phone page.
+  Laptop OS unknown; assume either Mac or Windows. A monitor is on the same desk.
+- Anand likes hardware/sensor demos. The team prefers client-relevant ideas, but fun lab demos are OK.
+
+
+2. HOW WE GOT HERE (short history)
+----------------------------------
+1. Brainstormed "new industry" ideas. Rejected, because they already exist: AI shopping-agent labs (ACES, ABxLab),
+   WebMCP readiness tools (Cloudflare, Lighthouse), Hinglish payments idea (didn't excite him), DRHP/IPO
+   inconsistency checker (gap found, parked).
+2. He asked for non-AI phone + laptop hardware ideas. From a list (bat sensor, magnet ring, table keypad, ride map,
+   barometer room sensor), he liked the MAGNET RING (no magnet at home) and the TABLE TAP KEYPAD.
+3. Feasibility test with the phyphox app (free, iOS + Android; exports CSV; has a remote-access HTTP API).
+4. Three recording sessions (Section 4), then the Desk Band build in versions v0 → v0.2 → chord editor → demo build.
+5. He's excited about the phyphox sensor set and wants many more experiments from it after Desk Band (Section 9).
+
+
+3. PHYSICAL SETUP USED IN TESTS
+-------------------------------
+- iPhone lying flat on a wooden table, top edge pointing away from the user.
+- 4 spots, each about 20 cm from the phone's centre (not a perfect square):
+    1 = top-left, 2 = top-right, 3 = bottom-right, 4 = bottom-left.
+- The pad numbering in BOTH pages follows this (grid order on screen: 1 2 / 4 3).
+- He later also tapped his laptop and monitor as extra "pads", which works well because different objects sound very
+  different. That's the best accuracy trick.
+
+
+4. EXPERIMENT RESULTS (offline, from his recordings)
+---------------------------------------------------
+Raw audio is NOT in the repo (personal recordings). Derived features from run 3 ARE:
+data/sessions/run3_features.npz with
+  FA = 120 x 19 audio features, FC = 120 x 34 accel features (first 7 = the compact set the browser uses),
+  y = spot label, p = pass (1 or 2).
+
+Run 1, phyphox "Acceleration (without g)" only, 100 Hz, 4 spots x about 10 taps, done in blocks:
+  - Leave-one-out about 70% vs 25% chance.
+  - CAVEAT: taps were done in blocks, so time drift could be helping the model.
+
+Run 2: unusable. The labels couldn't be recovered (no clean groups, a random section at the end).
+  Lesson: never rely on the user's memory for labels → guided prompting.
+
+Run 3, the main evidence. Phyphox accel at 100 Hz plus an iPhone Voice Memo (still 16 kHz AAC: the Lossless setting
+was off):
+  - One loud thump to sync, then 8 groups x 15 taps in the order 3,1,4,2 | 2,4,1,3.
+  - The audio started about 16.31 s before the accel recording (found by matching events).
+  - Train on pass 1, test on pass 2, and vice versa (separately recorded, different order). Logistic regression:
+
+        accelerometer only  66%
+        microphone only     76%
+        both combined       82%   (chance 25%)
+
+  - Same pipeline written in JS (static/core.js), run in Node over that recording, 10–15 training taps per zone: 79–88%.
+  - Detection gotcha found: the old fixed absMin threshold of 0.003 missed most taps at the quiet spot 3. Fixed by
+    absMin 0.0005 plus an adaptive noise floor x thrMult (default 5).
+
+Speed vs accuracy (listening window after the knock peak, run 3, both pass directions averaged roughly):
+
+        Fast      30 ms window   ~45 ms phone listening delay   ~71%
+        Balanced  45 ms window   ~61 ms                          ~77%   <- default
+        Accurate  70 ms window   ~84 ms                          ~80%
+
+Simple browser classifiers compared on run 3 (8 taps/zone): nearest-centroid ~70%, 3-NN ~65%,
+plain logistic regression ~78%. So: logistic regression, hand-written in core.js.
+
+
+5. LIVE FEEDBACK FROM ATHARVA AND WHAT WAS DONE
+-----------------------------------------------
+v0 feedback:
+  (a) "some latency, but not much";
+  (b) he had to wait about 0.5 s between notes, so no melodies;
+  (c) "a lot of my taps went to number one";
+  (d) no chords.
+Fixes in v0.2:
+  (b) Root cause was my code: a 200 ms refractory, plus no new onset while one was pending (~100 ms), plus a 250 ms
+      anti-echo mute. Now: overlapping pending onsets, 90 ms refractory, a rising-edge check (m > 1.8 x previous frame)
+      so ringing tails don't retrigger, anti-echo OFF by default (150 ms when on). The offline test catches 20/20
+      knocks at 8 per second.
+  (a) ScriptProcessor buffer 1024 → 256; 45 ms listening window by default; Response setting; the stage shows the
+      phone's measured listening delay (~56 ms in a browser test).
+  (c) Probably caused by block-wise training. Now GUIDED TRAINING: random-order prompts, 15 per zone, "mix soft and
+      hard knocks". Plus FIX-IT-WHILE-PLAYING: tap the right pad on the phone after a wrong note → that knock is
+      added with the right label and the model retrains.
+  (d) Two simultaneous knocks can't be separated with one phone (one blended event). Added a Chords kit
+      (C/G/Am/F strums), MIDI out (Chrome/Edge → GarageBand/Ableton via IAC or loopMIDI), and later a "My chords"
+      EDITOR (type note names per pad, e.g. "A3 C4 E4"; pluck/keys; ringing/stab; strummed/all-at-once; saved in
+      browser localStorage). A "teach 1+3 together as an extra class" combo idea is in README Phase 1 as a go/no-go.
+After v0.2: "Dude it works so much better… this is very very good now."
+Melody kit (C D E G) was added for Mary Had a Little Lamb and Hot Cross Buns. Twinkle Twinkle needs 6 notes,
+so it's waiting for the 6–8 pad version.
+
+Demo build (latest), for his online meeting with Anand:
+  - Laptop page shows a QR code for the phone link (/info endpoint). The QR lib is vendored at static/vendor/qrcode.js
+    (qrcode-generator 1.4.4, MIT, by Kazuhiko Arase), so it works without internet.
+  - Training taps are also saved on the laptop (POST/GET /samples?resp=<ms> → data/training/training-<ms>ms.json,
+    gitignored). A fresh phone page loads them and is ready to Play.
+  - Explainer panel (right side of the stage page):
+      * the knock waveform (60-point envelope sent by the phone);
+      * "Which spot sounds like that?": each zone's mean 18-band fingerprint as bars, this knock as a white line,
+        the matched zone highlighted;
+      * per-pad confidence bars;
+      * a timeline of the last 8 s.
+  - Camera card (laptop webcam, mirror toggle). It may fail on Windows if the meeting app holds the camera.
+  - "● Record demo": getDisplayMedia of this tab + a clean audio copy via MediaStreamDestination → .webm download.
+  - The server replays the last "ready" message (fingerprints, tap count, accuracy text) to stage pages that connect
+    later.
+  - Meeting tips given to him: share the Desk Band TAB with tab audio; wear headphones so the phone can't hear the call
+    or speakers; record a 30 s backup video first.
+
+
+6. ARCHITECTURE / FILE MAP
+--------------------------
+server.py
+  - Python 3.9+ stdlib (optional `cryptography`, otherwise the `openssl` CLI, for the self-signed cert).
+  - Phone:  https://<lan-ip>:8443. HTTPS is REQUIRED for the mic + DeviceMotion on iOS. PhoneServer peeks the first
+    byte: TLS → serve; plain HTTP → 301 to https. That fixed his ERR_CONNECTION_CLOSED when Chrome iOS opened http://.
+  - Laptop: http://localhost:8000 (stage).
+  - Routes: / (phone or stage by port), /phone.html, /stage.html, /core.js, /vendor/qrcode.js,
+    /events (SSE; sends hello plus a replay of last_ready), POST /hit (relay to all SSE subscribers),
+    GET/POST /samples?resp=NN, GET /info → {phone_url}.
+  - The cert is cached in .certs/cert-<ip>.pem (gitignored); it's regenerated if the IP changes, so the phone shows the
+    warning again.
+
+static/core.js  (shared by the phone page and the Node tests; NO dependencies; works as UMD/CommonJS)
+  - fft():             radix-2 in place.
+  - audioFeatures(seg, sr): Hann window → 4096 FFT → 18 log-spaced bands 150–7900 Hz → log energy, minus the mean
+                       (shape), plus the mean (level) = 19 values.
+  - accelFeatures(samples, tPeak, beforeMs=40, afterMs): per-axis RMS normalised (3) + signed peak per axis
+                       normalised (3) + log norm (1) = 7. Returns zeros if no motion data (mic-only still works).
+  - Detector:          one-pole high-pass ~150 Hz → 64-sample frames → adaptive noise floor (EMA when below
+                       threshold) → onset if frame max > max(noise*thrMult, absMin) AND rising AND past the
+                       refractory AND not muted → pending list → after search(12 ms)+post(window) samples, find the
+                       peak, cut [-5 ms, +post] → onHit({peakIdx, peakAmp, seg, wallMs, thr, delayMs}).
+                       muteUntilMs is used for screen touches (700 ms) and anti-echo.
+  - Model:             multinomial logistic regression, z-scored features, gradient descent
+                       (iters 600, lr 0.2, l2 0.05). predict → {zone, prob, probs}.
+
+static/phone.html
+  - Start sensors: DeviceMotionEvent.requestPermission on iOS (needs a user gesture); getUserMedia with
+    echoCancellation, noiseSuppression and autoGainControl all FALSE; ScriptProcessor 256; wake lock.
+  - Settings:
+      * Sensitivity (thrMult 3–12, default 5).
+      * Response (30/45/70 ms). Training data is stored PER Response setting: localStorage key deskband.v2.<ms>
+        plus the server copy.
+      * Anti-echo checkbox.
+  - Modes: idle | guided (random queue, 15/zone) | topup (tap a pad → +8 taps there) | play.
+  - In play, it POSTs {type:"hit", zone, prob, vel, delay, probs, fp(18), wave(60)}. Play sends
+    {type:"ready", fingerprints, taps, acc}.
+  - The accuracy estimate is 4-fold CV on the training taps (optimistic: same-session).
+  - Export taps → JSON download.
+
+static/stage.html
+  - Kits: drums, desi, marimba, chords, melody (C D E G), custom ("My chords" editor). All sounds are synthesised in
+    WebAudio; no sample files.
+  - MIDI out map per kit (drums on ch 10, GM notes 36/38/42/39).
+  - Keys 1–4 trigger pads (useful for testing without the phone).
+  - Explainer, timeline, QR join card, camera, recorder (see Section 5).
+
+tests/test_core.js        Offline synthetic test (detection + classification + rapid-fire 8/s). Run: node tests/test_core.js
+tools/analysis/*.py       The Python scripts used on the phyphox/Voice-Memo recordings (tap detection, alignment,
+                          segmentation, cross-pass scoring, classifier comparison, plots). They take file paths as
+                          arguments; segment.py/score.py have run-3-specific window times and OFF=16.31 hard-coded.
+tools/analysis/test_core_on_recording.js
+                          Runs core.js over a recording:
+                          node … <core.js> <audio.f32 raw mono float32 16k> <accel.csv> <postMs> <accAfterMs> <dropLevel 0/1>
+tools/browser-tests/e2e_demo.js
+                          Playwright: feeds a WAV as a FAKE MIC (Chromium flags --use-fake-device-for-media-stream
+                          --use-file-for-fake-audio-capture=<wav>), runs guided training, checks the laptop-saved
+                          training loads on a fresh phone, plays, checks the explainer, records a demo.
+                          Run the server first. The accuracy it prints is meaningless (prompts are random vs the fake
+                          audio); it checks plumbing.
+tools/browser-tests/chord_editor.js
+                          Playwright check of the chord editor (parsing, errors, persistence).
+data/sessions/            Exported tap features. NEVER raw room audio.
+data/training/            Laptop copy of training taps (gitignored).
+README.md                 Phased plan with checkpoints (Phase 0 done, Phase 1 next), demo instructions,
+                          phyphox backlog.
+
+
+7. KNOWN ISSUES / GOTCHAS
+-------------------------
+- The self-signed cert warning appears on the phone each time the cert is new. A plain-http visit is now redirected.
+  Office/guest Wi-Fi may block phone↔laptop traffic; fall back to the phone hotspot.
+- ScriptProcessorNode is deprecated. Move to an AudioWorklet in Phase 1 (also lower latency).
+- Safari DeviceMotion is about 60 Hz (phyphox gave 100 Hz). Motion is the weaker feature anyway.
+- One phone can't separate two simultaneous knocks (a blended event). Chords = one pad strums a chord.
+- The estimated accuracy shown on the phone is same-session CV, so it's optimistic. Report real numbers only from
+  separately recorded, prompted sessions.
+- If the laptop speakers are on the same table, the phone hears the drum → possible re-trigger. Use headphones, or
+  the anti-echo toggle.
+- ZONES is hard-coded to 4 in BOTH phone.html and stage.html (ids 1–4, colours, grid order 1 2 / 4 3), and the chord
+  editor / KITS / MIDI_MAP assume 4. Generalising to N pads is the next real task.
+- Webcam card may not open on Windows while Teams/Meet holds the camera.
+- Recording is .webm (plays in Chrome/VLC; QuickTime won't). Convert with ffmpeg if needed.
+- Not yet tested: Android, a different table, moved phone, next-day reuse, more than 4 pads.
+
+
+8. NEXT STEPS (in priority order; see README phases for detail and checkpoints)
+-------------------------------------------------------------------------------
+1. Publish: git init, first commit, create atharva-729/desk-band on GitHub, push. Check .gitignore keeps out .certs/,
+   data/training/ and any *.wav / *.m4a. Consider adding an MIT LICENSE (ask him).
+2. 6–8 PADS (he explicitly wants this: "I can take this to 6 or 8"; laptop and monitor as pads):
+   - Make the zone count configurable (one shared config, e.g. a ZONES list served by the server or kept in core.js),
+     with a pad layout on both pages and guided training for N zones.
+   - Extend kits to N, and the Melody kit to C D E F G A (+B C) so Twinkle Twinkle works.
+   - Let the user NAME pads ("laptop lid", "monitor", "book").
+   - Explain-then-quiz him before building, per his preference.
+3. README Phase 1:
+   - real end-to-end latency measurement (the phone hears both the knock and the laptop's sound);
+   - AudioWorklet;
+   - the different-objects vs same-wood comparison;
+   - the combo-chord go/no-go;
+   - a motion-trigger backup for soft taps;
+   - a confusion matrix from 100 prompted knocks.
+4. Phase 2 robustness study (guided session recorder; next day, moved phone, other surfaces, 6/8 spots, distance,
+   striker, case, ANDROID).
+5. Phase 3 expression: loop recorder (double knock on the edge), hand-height theremin (web sonar first; iPhone depth
+   via phyphox as a quick prototype).
+6. Phase 4: phone-only mode on GitHub Pages (valid HTTPS, no cert warning; sound through WIRED headphones, since
+   Bluetooth adds 150–250 ms); landing page with a video and results.
+7. After Desk Band: the phyphox experiment backlog (Section 9).
+
+
+9. PHYPHOX EXPERIMENT BACKLOG (he loves this; each is a quick test first)
+-------------------------------------------------------------------------
+Phyphox remote access lets Python on the laptop read live sensor buffers over HTTP
+(see https://phyphox.org/docs/remote-interface/ ; GET /get?<buffer>=… and /control?cmd=start|stop|clear).
+  1.  Barometer room events: door close / AC on → pressure blips.
+  2.  Barometer stair counter / building height.
+  3.  Appliance stethoscope: accel spectrum on a fridge, washing machine or desk near a fan → identify the appliance.
+  4.  Ball bounce lab: acoustic stopwatch → coefficient of restitution; cricket vs tennis vs ping-pong ball (sports!).
+  5.  Air theremin via the iPhone depth sensor → laptop synth.
+  6.  Sonar ruler (speaker + mic echo).
+  7.  Doppler speedometer.
+  8.  Spin challenge (gyro RPM).
+  9.  Magnet ring controller (magnetometer). MagSafe accessories contain magnets. Raw magnetometer isn't available to
+      plain web pages (Android Chrome needs a flag; iOS Safari only gives a heading), so use phyphox.
+  10. Heartbeat on the chest via accel. Just for fun; explicitly NOT a medical tool.
+Earlier context on why the magnet is needed: an accelerometer only senses the phone's OWN motion, so a still phone
+can't feel a hand moving near it. A magnet field (magnetometer), light, radio or sound must carry the signal.
+Samsung's Air Gesture used a special IR sensor, and S Pen Air Actions put the IMU in the pen (dropped on the S25 Ultra).
+
+
+10. PRIOR ART TO CITE (not repeat)
+----------------------------------
+- Mogees (2014): any surface as an instrument, but needs a separate contact sensor plugged into the phone.
+- Vibrative (Florian Kräutli, 2012): typing on a table via a jailbroken iPhone 4 accelerometer, ~80%.
+- Around-device magnet input research (2010s; ring-twist 2019; text entry 2021). Google Cardboard magnet button.
+- Elliptic Labs: ultrasound gestures built into phones.
+Our angle: zero accessories, mic + motion fused, a plain web page, aimed at any phone, all on-device.
+
+
+11. TALKING POINTS ALREADY GIVEN TO HIM (for the Anand meeting)
+--------------------------------------------------------------
+1. The hook: a table becomes a drum kit with only the phone in his pocket; no sensors, no app, just a web page.
+2. How it works: every spot rings differently (sound fingerprint) plus jolt direction; a tiny model learns ~60 knocks
+   in a minute.
+3. Numbers: ~80% on 4 spots of the same wood (cross-session), better on different objects; ~60 ms listening delay;
+   8+ notes/s.
+4. What's new vs Mogees/Vibrative: no extra hardware, browser only, on-device.
+5. Possible uses: hardware-free interactive surfaces (kiosks, exhibits, classrooms, rhythm teaching), knock-as-a-
+   button accessibility input.
+6. Honest limits and next steps: training per setup, lag noticeable to real drummers, Android untested; 6–8 pads,
+   robustness, a link anyone can try.
+7. The ask: push toward a client use case, or keep as a lab demo and try the next sensor?
+If he reports Anand's feedback, update the README and the plan accordingly.
+
+
+12. RUNNING IT
+--------------
+  python3 server.py                 (pip install cryptography if cert creation fails)
+  Laptop: http://localhost:8000 → Start sound
+  Phone:  scan the QR (or https://<ip>:8443) → accept the cert warning → Start sensors → Teach all spots → Play
+  Tests:  node tests/test_core.js
+          (server running) NODE_PATH=$(npm root -g) node tools/browser-tests/e2e_demo.js <fake-mic.wav> <out-dir>
