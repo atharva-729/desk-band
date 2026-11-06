@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Desk Band · Stage</title>
+<style>
+  :root { --bg:#0b0c10; --panel:#15171e; --line:#262a35; --ink:#eef0f6; --dim:#8b90a3;
+          --z1:#ff6b5a; --z2:#ffc23d; --z3:#3dd6a3; --z4:#5aa8ff; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; background:radial-gradient(1200px 700px at 50% 40%, #151826, var(--bg));
+         color:var(--ink); font:15px/1.4 -apple-system, system-ui, "Segoe UI", sans-serif; display:flex; flex-direction:column; }
+  header { display:flex; align-items:center; gap:16px; padding:18px 24px; }
+  h1 { margin:0; font-size:22px; letter-spacing:.5px; }
+  .dot { width:10px; height:10px; border-radius:50%; background:#555; display:inline-block; margin-right:6px; }
+  .dot.on { background:#3dd6a3; box-shadow:0 0 10px #3dd6a3; }
+  .status { color:var(--dim); font-size:14px; }
+  .spacer { flex:1; }
+  select, button { font:inherit; color:var(--ink); background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:8px 12px; }
+  main { flex:1; display:grid; grid-template-columns:minmax(0, 1fr) 360px; gap:20px; padding:4px 24px 8px; align-items:start; }
+  main.noexplain { grid-template-columns:minmax(0, 1fr); }
+  main.noexplain #side { display:none; }
+  main.noexplain .stagecol { max-width:900px; width:100%; margin:0 auto; }
+  @media (max-width: 980px) { main { grid-template-columns:1fr; } }
+  .stagecol { display:flex; flex-direction:column; gap:12px; min-width:0; }
+  #side { display:flex; flex-direction:column; gap:12px; }
+  .card { background:rgba(21,23,30,.9); border:1px solid var(--line); border-radius:16px; padding:12px 14px; }
+  .card h3 { margin:0 0 8px; font-size:13px; letter-spacing:.6px; text-transform:uppercase; color:var(--dim); font-weight:700; }
+  .card .why { font-size:12px; color:var(--dim); margin-top:6px; }
+  canvas { display:block; width:100%; }
+  .fps { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .fp { border:1px solid var(--line); border-radius:10px; padding:4px 6px 6px; transition:border-color .15s, box-shadow .15s; }
+  .fp .t { font-size:12px; color:var(--dim); display:flex; justify-content:space-between; }
+  .fp.match { box-shadow:0 0 0 2px currentColor; }
+  .bars .b { display:grid; grid-template-columns:22px 1fr 44px; align-items:center; gap:8px; margin:5px 0; font-size:13px; }
+  .bars .track { height:10px; background:#0b0c10; border-radius:6px; overflow:hidden; }
+  .bars .fill { height:100%; width:0; border-radius:6px; transition:width .12s; }
+  #join .qr { background:#fff; border-radius:12px; padding:8px; width:172px; height:172px; margin:4px auto 8px; }
+  #join .qr svg { width:100%; height:100%; display:block; }
+  #join .url { font:600 13px ui-monospace, Menlo, monospace; text-align:center; word-break:break-all; }
+  #join ol { margin:8px 0 0 18px; padding:0; font-size:13px; color:var(--dim); }
+  #camCard video { width:100%; border-radius:10px; background:#000; display:block; transform:scaleX(-1); }
+  #camCard.nomirror video { transform:none; }
+  .rec { color:#ff6b5a; border-color:#5a2a2a; }
+  .rec.on { background:#ff6b5a; color:#14151a; font-weight:700; }
+  .table { position:relative; width:100%; aspect-ratio: 16 / 10; border-radius:28px;
+           background:linear-gradient(160deg, #2a1f17, #1b140f); border:1px solid #3a2b20;
+           box-shadow: inset 0 0 80px rgba(0,0,0,.6), 0 30px 80px rgba(0,0,0,.5);
+           display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:6%; padding:6%; }
+  .pad { position:relative; border-radius:22px; border:2px solid; display:flex; flex-direction:column; align-items:center;
+         justify-content:center; background:rgba(255,255,255,.02); overflow:hidden; transition:transform .06s; }
+  .pad .num { font-size:clamp(28px, 5vw, 54px); font-weight:800; opacity:.9; }
+  .pad .lab { font-size:14px; color:var(--dim); }
+  .pad .snd { font-size:13px; margin-top:4px; opacity:.8; }
+  .pad .glow { position:absolute; inset:0; opacity:0; transition:opacity .35s ease-out; }
+  .pad.hit { transform:scale(.97); }
+  .pad.hit .glow { opacity:.85; transition:none; }
+  .ring { position:absolute; left:50%; top:50%; width:20px; height:20px; margin:-10px; border-radius:50%; border:3px solid;
+          animation:ring .6s ease-out forwards; pointer-events:none; }
+  @keyframes ring { to { transform:scale(18); opacity:0; } }
+  .phone { position:absolute; left:50%; top:50%; width:46px; height:82px; margin:-41px 0 0 -23px; border-radius:10px;
+           border:2px solid #8b90a3; background:#0b0c10; z-index:2; }
+  .phone:after { content:""; position:absolute; top:5px; left:50%; width:14px; height:3px; margin-left:-7px; background:#8b90a3; border-radius:2px; }
+  footer { display:flex; gap:18px; padding:14px 24px; color:var(--dim); font-size:13px; flex-wrap:wrap; }
+  #gate { position:fixed; inset:0; background:rgba(5,6,9,.88); display:flex; align-items:center; justify-content:center; z-index:9; }
+  #gate .box { text-align:center; max-width:460px; padding:24px; }
+  #gate button { font-size:18px; padding:14px 26px; background:#ff6b5a; border-color:#ff6b5a; color:#14151a; font-weight:700; margin-top:14px; cursor:pointer; }
+  button { cursor:pointer; }
+  #editor { position:fixed; top:0; right:0; bottom:0; width:min(420px, 100vw); background:#111319; border-left:1px solid var(--line);
+            padding:20px; overflow:auto; z-index:5; box-shadow:-20px 0 60px rgba(0,0,0,.5); }
+  #editor h2 { margin:0 0 4px; font-size:18px; }
+  #editor .help { color:var(--dim); font-size:13px; margin:0 0 14px; }
+  .erow { border:1px solid var(--line); border-radius:12px; padding:10px; margin-bottom:10px; }
+  .erow .top { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+  .erow .badge { width:26px; height:26px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-weight:800; color:#14151a; }
+  .erow input { font:inherit; color:var(--ink); background:#0b0c10; border:1px solid var(--line); border-radius:8px; padding:8px 10px; width:100%; }
+  .erow input.name { width:auto; flex:1; }
+  .erow .msg { font-size:12px; margin-top:5px; color:var(--dim); min-height:16px; }
+  .erow .msg.err { color:#ff6b5a; }
+  .eopts { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:12px 0; color:var(--dim); font-size:14px; }
+  .chart { font-size:12px; color:var(--dim); border-collapse:collapse; margin-top:6px; }
+  .chart td { border:1px solid var(--line); padding:3px 6px; text-align:center; }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+<div id="gate"><div class="box">
+  <h1>Desk Band</h1>
+  <p class="status">This screen plays the sounds. Open the phone link printed in your terminal, teach it your four spots, press Play there, and knock.</p>
+  <button id="go">Start sound</button>
+</div></div>
+
+<header>
+  <h1>Desk Band</h1>
+  <span class="status"><span id="conn" class="dot"></span><span id="connText">connecting…</span></span>
+  <div class="spacer"></div>
+  <label class="status">Kit
+    <select id="kit">
+      <option value="drums">Drum kit</option>
+      <option value="desi">Desi (dhol + tabla)</option>
+      <option value="marimba">Marimba</option>
+      <option value="chords">Chords (C · G · Am · F)</option>
+      <option value="melody">Melody (C · D · E · G)</option>
+      <option value="custom">My chords (editable)</option>
+    </select>
+  </label>
+  <button id="editBtn">Edit my chords</button>
+  <button id="midi" title="Send notes to GarageBand, Ableton or any music app (Chrome/Edge)">MIDI out: off</button>
+  <button id="camBtn" title="Show your webcam so people see your hand and the pad together">Camera</button>
+  <button id="explainBtn">Hide explainer</button>
+  <button id="recBtn" class="rec" title="Record this screen with the sound to a video file">● Record demo</button>
+</header>
+
+<aside id="editor" class="hidden">
+  <h2>My chords</h2>
+  <p class="help">Type the notes for each pad, separated by spaces: a letter, an optional <b>#</b> or <b>b</b>, then the octave.
+    Middle C is <b>C4</b>; the A below it is <b>A3</b>. Put a low note in the list for a bass note. Saved in this browser.</p>
+  <div id="erows"></div>
+  <div class="eopts">
+    <label>Sound <select id="eVoice"><option value="pluck">Pluck</option><option value="keys">Keys</option></select></label>
+    <label>Length <select id="eLen"><option value="ring">Ringing</option><option value="stab">Short stabs</option></select></label>
+    <label>Strum <select id="eStrum"><option value="18">Strummed</option><option value="0">All at once</option></select></label>
+  </div>
+  <div class="eopts">
+    <button id="eReset">Reset to C · G · Am · F</button>
+    <button id="eClose">Done</button>
+  </div>
+  <table class="chart"><tr><td>C</td><td>C#/Db</td><td>D</td><td>D#/Eb</td><td>E</td><td>F</td><td>F#/Gb</td><td>G</td><td>G#/Ab</td><td>A</td><td>A#/Bb</td><td>B</td></tr></table>
+  <p class="help" style="margin-top:6px">Octaves go C to B: <b>B3</b> is just below <b>C4</b>. Lower numbers sound deeper; for a bass, try octave 2.</p>
+</aside>
+
+<main id="main">
+  <div class="stagecol">
+    <div class="table" id="table"><div class="phone"></div></div>
+    <div class="card">
+      <h3>Last 8 seconds</h3>
+      <canvas id="timeline" height="96"></canvas>
+    </div>
+  </div>
+  <div id="side">
+    <div class="card hidden" id="camCard">
+      <h3 style="display:flex;justify-content:space-between">Camera <label style="text-transform:none;letter-spacing:0;font-weight:400"><input type="checkbox" id="mirror" checked> mirror</label></h3>
+      <video id="cam" autoplay muted playsinline></video>
+    </div>
+    <div class="card" id="join">
+      <h3>Join with a phone</h3>
+      <div class="qr" id="qr"></div>
+      <div class="url" id="joinUrl">…</div>
+      <ol>
+        <li>Scan with the phone camera, open the link.</li>
+        <li>“Not private” warning → Show Details / Advanced → visit.</li>
+        <li>Start sensors → Teach all spots → Play.</li>
+      </ol>
+    </div>
+    <div class="card" id="heard">
+      <h3>What the phone heard</h3>
+      <canvas id="wave" height="70"></canvas>
+      <div class="why">The knock, as the phone's mic heard it (the first ~50 ms).</div>
+    </div>
+    <div class="card">
+      <h3>Which spot sounds like that?</h3>
+      <div class="fps" id="fps"></div>
+      <div class="why">Every spot on the table rings differently. Bars = each spot's sound fingerprint (low → high pitch); white line = this knock.</div>
+    </div>
+    <div class="card">
+      <h3>How sure it is</h3>
+      <div class="bars" id="bars"></div>
+      <div class="why" id="trained">Waiting for the phone…</div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <span id="count">0 hits</span>
+  <span id="last">—</span>
+  <span id="lag"></span>
+  <span>Keys 1–4 play the pads without the phone.</span>
+</footer>
+
+<script src="vendor/qrcode.js"></script>
+<script>
+(() => {
+  "use strict";
+  const ZONES = [
+    { id: 1, name: "Top left", color: "#ff6b5a" },
+    { id: 2, name: "Top right", color: "#ffc23d" },
+    { id: 4, name: "Bottom left", color: "#5aa8ff" },
+    { id: 3, name: "Bottom right", color: "#3dd6a3" },
+  ];
+  const KITS = {
+    drums:   { 1: ["Kick", kick], 2: ["Snare", snare], 3: ["Hi-hat", hat], 4: ["Clap", clap] },
+    desi:    { 1: ["Dhol (low)", dholLow], 2: ["Dhol (slap)", dholSlap], 3: ["Tabla na", tablaNa], 4: ["Shaker", shaker] },
+    marimba: { 1: ["C", (v) => mallet(523.25, v)], 2: ["E", (v) => mallet(659.25, v)],
+               3: ["A", (v) => mallet(880.0, v)], 4: ["G", (v) => mallet(783.99, v)] },
+    melody:  { 1: ["C", (v) => mallet(523.25, v)], 2: ["D", (v) => mallet(587.33, v)],
+               3: ["E", (v) => mallet(659.25, v)], 4: ["G", (v) => mallet(783.99, v)] },
+    chords:  { 1: ["C major", (v) => strum(CHORDS[1], v)], 2: ["G major", (v) => strum(CHORDS[2], v)],
+               3: ["A minor", (v) => strum(CHORDS[3], v)], 4: ["F major", (v) => strum(CHORDS[4], v)] },
+  };
+  // MIDI note numbers per kit and pad
+  const CHORDS = { 1: [60, 64, 67, 72], 2: [55, 59, 62, 67], 3: [57, 60, 64, 69], 4: [53, 57, 60, 65] };
+  const MIDI_MAP = {
+    drums: { ch: 9, notes: { 1: [36], 2: [38], 3: [42], 4: [39] } },
+    desi: { ch: 9, notes: { 1: [41], 2: [37], 3: [60], 4: [70] } },
+    marimba: { ch: 0, notes: { 1: [72], 2: [76], 3: [81], 4: [79] } },
+    chords: { ch: 0, notes: CHORDS },
+    melody: { ch: 0, notes: { 1: [72], 2: [74], 3: [76], 4: [79] } },
+  };
+  const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
+  let ctx = null, master = null, kit = "drums", hits = 0, midiOut = null;
+  const $ = (id) => document.getElementById(id);
+
+  // ---------- "My chords": editable kit, saved in this browser ----------
+  const CUSTOM_KEY = "deskband.mychords.v1";
+  const CUSTOM_DEFAULT = {
+    pads: { 1: { name: "C major", notes: "C4 E4 G4 C5" }, 2: { name: "G major", notes: "G3 B3 D4 G4" },
+            3: { name: "A minor", notes: "A3 C4 E4 A4" }, 4: { name: "F major", notes: "F3 A3 C4 F4" } },
+    voice: "pluck", len: "ring", strum: 18,
+  };
+  let custom = loadCustom();
+  function loadCustom() {
+    try { const c = JSON.parse(localStorage.getItem(CUSTOM_KEY)); if (c && c.pads) return c; } catch {}
+    return JSON.parse(JSON.stringify(CUSTOM_DEFAULT));
+  }
+  function saveCustom() { try { localStorage.setItem(CUSTOM_KEY, JSON.stringify(custom)); } catch {} }
+  const SEMI = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+  function parseNotes(text) {
+    const out = [];
+    for (const tok of text.trim().split(/[\s,]+/).filter(Boolean)) {
+      const m = /^([A-Ga-g])([#b]?)(-?\d)$/.exec(tok);
+      if (!m) return { error: `“${tok}” isn't a note — use e.g. C4, F#3, Bb2` };
+      const midi = (+m[3] + 1) * 12 + SEMI[m[1].toUpperCase()] + (m[2] === "#" ? 1 : m[2] === "b" ? -1 : 0);
+      if (midi < 21 || midi > 108) return { error: `“${tok}” is off the piano` };
+      out.push(midi);
+    }
+    if (out.length > 8) return { error: "Up to 8 notes per pad" };
+    return { notes: out };
+  }
+  function rebuildCustom() {
+    const kitObj = {}, midi = {};
+    for (const id of [1, 2, 3, 4]) {
+      const p = custom.pads[id], parsed = parseNotes(p.notes), notes = parsed.notes || [];
+      kitObj[id] = [p.name || `Pad ${id}`, (v) => playChord(notes, v)];
+      midi[id] = notes;
+    }
+    KITS.custom = kitObj;
+    MIDI_MAP.custom = { ch: 0, notes: midi };
+    if (kit === "custom") labelPads();
+  }
+
+  // ---------- pads ----------
+  const pads = {};
+  for (const z of ZONES) {
+    const el = document.createElement("div");
+    el.className = "pad";
+    el.style.borderColor = z.color;
+    el.innerHTML = `<div class="glow" style="background:radial-gradient(circle, ${z.color}, transparent 70%)"></div>
+      <div class="num" style="color:${z.color}">${z.id}</div><div class="lab">${z.name}</div><div class="snd"></div>`;
+    $("table").appendChild(el);
+    pads[z.id] = el;
+  }
+  function labelPads() { for (const z of ZONES) pads[z.id].querySelector(".snd").textContent = KITS[kit][z.id][0]; }
+  rebuildCustom();
+  labelPads();
+
+  // editor panel
+  const erows = {};
+  for (const z of [...ZONES].sort((a, b) => a.id - b.id)) {
+    const row = document.createElement("div");
+    row.className = "erow";
+    row.innerHTML = `<div class="top"><div class="badge" style="background:${z.color}">${z.id}</div>
+      <input class="name" placeholder="Name"><span class="status">${z.name}</span></div>
+      <input class="notes" placeholder="e.g. A3 C4 E4" spellcheck="false" autocomplete="off"><div class="msg"></div>`;
+    $("erows").appendChild(row);
+    const name = row.querySelector(".name"), notes = row.querySelector(".notes"), msg = row.querySelector(".msg");
+    const update = () => {
+      custom.pads[z.id] = { name: name.value, notes: notes.value };
+      const p = parseNotes(notes.value);
+      msg.classList.toggle("err", !!p.error);
+      msg.textContent = p.error || (p.notes.length ? `${p.notes.length} note${p.notes.length > 1 ? "s" : ""} ✓` : "silent");
+      saveCustom(); rebuildCustom();
+    };
+    name.addEventListener("input", update);
+    notes.addEventListener("input", update);
+    notes.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); trigger(z.id, 0.85); } });
+    erows[z.id] = { name, notes, update };
+  }
+  function fillEditor() {
+    for (const id of [1, 2, 3, 4]) { erows[id].name.value = custom.pads[id].name; erows[id].notes.value = custom.pads[id].notes; erows[id].update(); }
+    $("eVoice").value = custom.voice; $("eLen").value = custom.len; $("eStrum").value = String(custom.strum);
+  }
+  fillEditor();
+  for (const [id, key, num] of [["eVoice", "voice"], ["eLen", "len"], ["eStrum", "strum", true]])
+    $(id).addEventListener("change", (e) => { custom[key] = num ? +e.target.value : e.target.value; saveCustom(); });
+  $("editBtn").addEventListener("click", () => {
+    $("editor").classList.toggle("hidden");
+    if (!$("editor").classList.contains("hidden")) { kit = "custom"; $("kit").value = "custom"; labelPads(); }
+  });
+  $("eClose").addEventListener("click", () => $("editor").classList.add("hidden"));
+  $("eReset").addEventListener("click", () => { custom = JSON.parse(JSON.stringify(CUSTOM_DEFAULT)); saveCustom(); fillEditor(); });
+  $("kit").addEventListener("change", (e) => { kit = e.target.value; labelPads(); });
+
+  function show(zone, prob) {
+    const el = pads[zone];
+    if (!el) return;
+    el.classList.add("hit");
+    const r = document.createElement("div");
+    r.className = "ring"; r.style.borderColor = ZONES.find((z) => z.id === zone).color;
+    el.appendChild(r);
+    setTimeout(() => r.remove(), 650);
+    requestAnimationFrame(() => setTimeout(() => el.classList.remove("hit"), 60));
+    hits++;
+    $("count").textContent = `${hits} hit${hits === 1 ? "" : "s"}`;
+    $("last").textContent = `last: spot ${zone}` + (prob != null ? ` (${Math.round(prob * 100)}% sure)` : "");
+  }
+
+  function trigger(zone, vel = 0.8, prob = null) {
+    show(zone, prob);
+    timeline.push({ t: performance.now(), zone, vel });
+    const v = Math.max(0.15, Math.min(1, vel));
+    if (midiOut) return sendMidi(zone, v);
+    if (!ctx) return;
+    KITS[kit][zone][1](v);
+  }
+
+  // ---------- MIDI out (Chrome / Edge) ----------
+  function sendMidi(zone, v) {
+    const { ch, notes } = MIDI_MAP[kit], velocity = Math.round(30 + 97 * v);
+    const isChord = kit === "chords" || kit === "custom";
+    const gap = kit === "custom" ? custom.strum : 15, hold = kit === "custom" && custom.len === "stab" ? 200 : 900;
+    notes[zone].forEach((n, i) => {
+      const at = performance.now() + (isChord ? i * gap : 0); // little strum
+      midiOut.send([0x90 | ch, n, velocity], at);
+      midiOut.send([0x80 | ch, n, 0], at + (isChord ? hold : 150));
+    });
+  }
+  $("midi").addEventListener("click", async () => {
+    if (midiOut) { midiOut = null; $("midi").textContent = "MIDI out: off"; return; }
+    if (!navigator.requestMIDIAccess) return alert("This browser can't send MIDI. Use Chrome or Edge.");
+    try {
+      const access = await navigator.requestMIDIAccess();
+      const outs = [...access.outputs.values()];
+      if (!outs.length) return alert("No MIDI output found.\nMac: open Audio MIDI Setup → MIDI Studio → IAC Driver → tick 'Device is online'.\nWindows: install loopMIDI and create a port.\nThen open GarageBand/Ableton and reload this page.");
+      midiOut = outs[0];
+      $("midi").textContent = `MIDI out: ${midiOut.name}`;
+    } catch (e) { alert("MIDI blocked: " + e.message); }
+  });
+
+  // ---------- synth voices (all generated, no sample files) ----------
+  function env(node, t, peak, decay) {
+    node.gain.setValueAtTime(0.0001, t);
+    node.gain.exponentialRampToValueAtTime(peak, t + 0.003);
+    node.gain.exponentialRampToValueAtTime(0.0001, t + decay);
+  }
+  let noiseBuf = null;
+  function noise() {
+    if (!noiseBuf) {
+      noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    const s = ctx.createBufferSource(); s.buffer = noiseBuf; return s;
+  }
+  function tone(type, f0, f1, dur, v, peak = 1) {
+    const t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur * 0.6);
+    env(g, t, peak * v, dur); o.connect(g).connect(master); o.start(t); o.stop(t + dur + 0.05);
+  }
+  function burst(filterType, freq, q, dur, v, peak = 1, delay = 0) {
+    const t = ctx.currentTime + delay, s = noise(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    f.type = filterType; f.frequency.value = freq; f.Q.value = q;
+    env(g, t, peak * v, dur); s.connect(f).connect(g).connect(master); s.start(t); s.stop(t + dur + 0.05);
+  }
+  function kick(v) { tone("sine", 160, 42, 0.45, v, 1.1); }
+  function snare(v) { burst("highpass", 1400, 0.7, 0.22, v, 0.7); tone("triangle", 220, 160, 0.12, v, 0.5); }
+  function hat(v) { burst("highpass", 7500, 0.8, 0.07, v, 0.5); }
+  function clap(v) { [0, 0.012, 0.024].forEach((d) => burst("bandpass", 1300, 1.2, 0.03, v, 0.8, d)); burst("bandpass", 1300, 1.2, 0.25, v, 0.5, 0.03); }
+  function dholLow(v) { tone("sine", 120, 70, 0.6, v, 1.1); burst("lowpass", 400, 0.7, 0.08, v, 0.4); }
+  function dholSlap(v) { burst("bandpass", 2200, 2, 0.09, v, 0.9); tone("sine", 330, 260, 0.15, v, 0.4); }
+  function tablaNa(v) { tone("sine", 620, 590, 0.5, v, 0.6); tone("sine", 1240, 1180, 0.25, v, 0.25); burst("bandpass", 3000, 3, 0.02, v, 0.4); }
+  function shaker(v) { burst("bandpass", 6000, 1.5, 0.12, v, 0.45); }
+  function mallet(f, v) { tone("sine", f, f, 0.9, v, 0.7); tone("sine", f * 4, f * 4, 0.12, v, 0.15); }
+  function pluck(f, v, delay) {
+    const t = ctx.currentTime + delay, o = ctx.createOscillator(), lp = ctx.createBiquadFilter(), g = ctx.createGain();
+    o.type = "sawtooth"; o.frequency.value = f;
+    lp.type = "lowpass"; lp.frequency.setValueAtTime(800 + 3000 * v, t); lp.frequency.exponentialRampToValueAtTime(400, t + 0.8);
+    env(g, t, 0.22 * v, 1.4); o.connect(lp).connect(g).connect(master); o.start(t); o.stop(t + 1.5);
+  }
+  function strum(notes, v) { notes.forEach((n, i) => pluck(mtof(n), v, i * 0.018)); }
+  function keysNote(f, v, delay, dur) {
+    const t = ctx.currentTime + delay;
+    [[1, 0.5], [2, 0.14], [3, 0.05]].forEach(([h, a]) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = "sine"; o.frequency.value = f * h;
+      env(g, t, a * v, dur / h); o.connect(g).connect(master); o.start(t); o.stop(t + dur + 0.05);
+    });
+  }
+  function playChord(notes, v) {
+    const stab = custom.len === "stab", gap = custom.strum / 1000;
+    notes.forEach((n, i) => {
+      const f = mtof(n), d = i * gap;
+      if (custom.voice === "keys") keysNote(f, v, d, stab ? 0.35 : 1.6);
+      else stab ? stabPluck(f, v, d) : pluck(f, v, d);
+    });
+  }
+  function stabPluck(f, v, delay) {
+    const t = ctx.currentTime + delay, o = ctx.createOscillator(), lp = ctx.createBiquadFilter(), g = ctx.createGain();
+    o.type = "sawtooth"; o.frequency.value = f;
+    lp.type = "lowpass"; lp.frequency.setValueAtTime(900 + 3000 * v, t); lp.frequency.exponentialRampToValueAtTime(500, t + 0.25);
+    env(g, t, 0.22 * v, 0.3); o.connect(lp).connect(g).connect(master); o.start(t); o.stop(t + 0.4);
+  }
+
+  $("go").addEventListener("click", async () => {
+    ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: "interactive" });
+    await ctx.resume();
+    master = ctx.createGain(); master.gain.value = 0.8;
+    const comp = ctx.createDynamicsCompressor();
+    master.connect(comp).connect(ctx.destination);
+    recDest = ctx.createMediaStreamDestination(); // a clean copy of the sound for recordings
+    comp.connect(recDest);
+    $("gate").remove();
+  });
+  let recDest = null;
+
+  document.addEventListener("keydown", (e) => { const z = +e.key; if (z >= 1 && z <= 4) trigger(z, 0.9); });
+
+  // ---------- explainer: what the phone heard and why it chose that pad ----------
+  const COLORS = Object.fromEntries(ZONES.map((z) => [z.id, z.color]));
+  const IDS = [1, 2, 3, 4];
+  let zoneFps = {}, lastFp = null, lastWave = null, matched = null;
+  const timeline = [];
+
+  function sizeCanvas(c) {
+    const dpr = window.devicePixelRatio || 1, w = c.clientWidth, h = +c.getAttribute("height");
+    if (c.width !== Math.round(w * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+    const g = c.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return [g, w, h];
+  }
+  // fingerprint cards + confidence bars
+  const fpEls = {}, barEls = {};
+  for (const id of IDS) {
+    const card = document.createElement("div");
+    card.className = "fp"; card.style.color = COLORS[id];
+    card.innerHTML = `<div class="t"><b style="color:${COLORS[id]}">${id}</b><span class="nm"></span></div><canvas height="44"></canvas>`;
+    $("fps").appendChild(card); fpEls[id] = card;
+    const bar = document.createElement("div");
+    bar.className = "b";
+    bar.innerHTML = `<b style="color:${COLORS[id]}">${id}</b><div class="track"><div class="fill" style="background:${COLORS[id]}"></div></div><span class="pct">–</span>`;
+    $("bars").appendChild(bar); barEls[id] = bar;
+  }
+  function drawFps() {
+    for (const id of IDS) {
+      const card = fpEls[id], [g, w, h] = sizeCanvas(card.querySelector("canvas"));
+      card.querySelector(".nm").textContent = KITS[kit][id][0];
+      card.classList.toggle("match", matched === id);
+      g.clearRect(0, 0, w, h);
+      const fp = zoneFps[id];
+      if (!fp) { g.fillStyle = "#3a3f4e"; g.font = "11px system-ui"; g.fillText("not trained yet", 4, h / 2 + 4); continue; }
+      const all = [...fp, ...(lastFp || [])], lo = Math.min(...all), hi = Math.max(...all), span = hi - lo || 1;
+      const bw = w / fp.length;
+      g.fillStyle = COLORS[id]; g.globalAlpha = matched === id ? 0.95 : 0.45;
+      fp.forEach((v, i) => { const bh = ((v - lo) / span) * (h - 4) + 2; g.fillRect(i * bw + 1, h - bh, bw - 2, bh); });
+      g.globalAlpha = 1;
+      if (lastFp) {
+        g.strokeStyle = "#fff"; g.lineWidth = 1.6; g.beginPath();
+        lastFp.forEach((v, i) => { const y = h - (((v - lo) / span) * (h - 4) + 2); i ? g.lineTo(i * bw + bw / 2, y) : g.moveTo(bw / 2, y); });
+        g.stroke();
+      }
+    }
+  }
+  function drawWave() {
+    const [g, w, h] = sizeCanvas($("wave"));
+    g.clearRect(0, 0, w, h);
+    g.strokeStyle = "#262a35"; g.beginPath(); g.moveTo(0, h / 2); g.lineTo(w, h / 2); g.stroke();
+    if (!lastWave) return;
+    const col = matched ? COLORS[matched] : "#8b90a3", n = lastWave.length, bw = w / n;
+    g.fillStyle = col;
+    lastWave.forEach((v, i) => { const a = v * (h / 2 - 3); g.fillRect(i * bw + 0.5, h / 2 - a, Math.max(1, bw - 1), a * 2 || 1); });
+  }
+  function drawBars(probs) {
+    for (const id of IDS) {
+      const p = probs ? probs[id] || 0 : 0;
+      barEls[id].querySelector(".fill").style.width = `${Math.round(p * 100)}%`;
+      barEls[id].querySelector(".pct").textContent = probs ? `${Math.round(p * 100)}%` : "–";
+    }
+  }
+  function drawTimeline() {
+    const c = $("timeline"), [g, w, h] = sizeCanvas(c), now = performance.now(), span = 8000;
+    g.clearRect(0, 0, w, h);
+    const rowH = h / 4, order = [1, 2, 3, 4];
+    order.forEach((id, r) => {
+      g.fillStyle = r % 2 ? "rgba(255,255,255,.02)" : "rgba(255,255,255,.04)";
+      g.fillRect(0, r * rowH, w, rowH);
+      g.fillStyle = COLORS[id]; g.font = "bold 11px system-ui"; g.fillText(String(id), 6, r * rowH + rowH / 2 + 4);
+    });
+    while (timeline.length && now - timeline[0].t > span) timeline.shift();
+    for (const ev of timeline) {
+      const x = 22 + (w - 30) * (1 - (now - ev.t) / span), r = order.indexOf(ev.zone);
+      const fresh = Math.max(0, 1 - (now - ev.t) / 400);
+      g.fillStyle = COLORS[ev.zone];
+      g.beginPath(); g.arc(x, r * rowH + rowH / 2, 3.5 + 4 * ev.vel + 4 * fresh, 0, Math.PI * 2); g.fill();
+    }
+    requestAnimationFrame(drawTimeline);
+  }
+  requestAnimationFrame(drawTimeline);
+  drawFps(); drawWave(); drawBars(null);
+  $("kit").addEventListener("change", drawFps);
+  window.addEventListener("resize", () => { drawFps(); drawWave(); });
+
+  // ---------- join card: QR code for the phone link ----------
+  fetch("/info").then((r) => r.json()).then(({ phone_url }) => {
+    $("joinUrl").textContent = phone_url;
+    try {
+      const qr = qrcode(0, "M"); qr.addData(phone_url); qr.make();
+      $("qr").innerHTML = qr.createSvgTag({ cellSize: 4, margin: 1, scalable: true });
+    } catch { $("qr").style.display = "none"; } // offline: the link text still works
+  }).catch(() => {});
+
+  // ---------- camera + explainer toggles ----------
+  let camStream = null;
+  $("camBtn").addEventListener("click", async () => {
+    if (camStream) { camStream.getTracks().forEach((t) => t.stop()); camStream = null; $("camCard").classList.add("hidden"); $("camBtn").textContent = "Camera"; return; }
+    try {
+      camStream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 }, audio: false });
+      $("cam").srcObject = camStream; $("camCard").classList.remove("hidden"); $("camBtn").textContent = "Camera: on";
+      $("main").classList.remove("noexplain"); $("explainBtn").textContent = "Hide explainer";
+    } catch (e) { alert("Camera not available: " + e.message + "\n(If your meeting app is using the camera, people can already see you there.)"); }
+  });
+  $("mirror").addEventListener("change", (e) => $("camCard").classList.toggle("nomirror", !e.target.checked));
+  $("explainBtn").addEventListener("click", () => {
+    const off = $("main").classList.toggle("noexplain");
+    $("explainBtn").textContent = off ? "Show explainer" : "Hide explainer";
+    setTimeout(() => { drawFps(); drawWave(); }, 50);
+  });
+
+  // ---------- record demo: this tab's picture + the instrument's sound ----------
+  let recorder = null;
+  $("recBtn").addEventListener("click", async () => {
+    if (recorder) { recorder.stop(); return; }
+    if (!recDest) return alert("Click “Start sound” first.");
+    let screen;
+    try {
+      screen = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: false, preferCurrentTab: true, selfBrowserSurface: "include" });
+    } catch { return; } // cancelled
+    const stream = new MediaStream([...screen.getVideoTracks(), ...recDest.stream.getAudioTracks()]);
+    const type = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", "video/mp4"].find((t) => MediaRecorder.isTypeSupported(t));
+    const chunks = [];
+    recorder = new MediaRecorder(stream, type ? { mimeType: type, videoBitsPerSecond: 6e6 } : undefined);
+    recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+    recorder.onstop = () => {
+      screen.getTracks().forEach((t) => t.stop());
+      const blob = new Blob(chunks, { type: recorder.mimeType });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `desk-band-demo.${recorder.mimeType.includes("mp4") ? "mp4" : "webm"}`;
+      a.click();
+      recorder = null; $("recBtn").textContent = "● Record demo"; $("recBtn").classList.remove("on");
+    };
+    screen.getVideoTracks()[0].addEventListener("ended", () => recorder && recorder.stop());
+    recorder.start(500);
+    $("recBtn").textContent = "■ Stop & save"; $("recBtn").classList.add("on");
+  });
+
+  // ---------- live hits from the phone ----------
+  function connect() {
+    const es = new EventSource("/events");
+    es.onopen = () => { $("conn").classList.add("on"); $("connText").textContent = "server connected · waiting for phone"; };
+    es.onmessage = (e) => {
+      const m = JSON.parse(e.data);
+      if (m.type === "ready") {
+        $("connText").textContent = "phone is playing";
+        zoneFps = m.fingerprints || {};
+        $("join").classList.add("hidden");
+        $("trained").textContent = `Trained on ${m.taps || "?"} knocks. ${m.acc || ""}`;
+        drawFps();
+      }
+      if (m.type === "hit") {
+        $("connText").textContent = "phone is playing";
+        if (!$("join").classList.contains("hidden")) $("join").classList.add("hidden");
+        trigger(m.zone, m.vel, m.prob);
+        if (m.delay != null) $("lag").textContent = `phone listening delay: ${m.delay} ms (+ Wi-Fi + speakers)`;
+        matched = m.zone; lastFp = m.fp || null; lastWave = m.wave || null;
+        drawWave(); drawFps(); drawBars(m.probs || null);
+      }
+    };
+    es.onerror = () => { $("conn").classList.remove("on"); $("connText").textContent = "reconnecting…"; };
+  }
+  connect();
+})();
+</script>
+</body>
+</html>

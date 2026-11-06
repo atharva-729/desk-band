@@ -1,0 +1,18 @@
+.certs/
+__pycache__/
+*.wav
+*.m4a
+.DS_Store
+data/training/
+
+# raw recordings and demo videos never go in the repo
+*.f32
+*.webm
+*.mp3
+*.aac
+*.caf
+*.flac
+*.csv
+data/raw/
+data/recordings/
+node_modules/
