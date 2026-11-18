@@ -2,6 +2,8 @@
 
 **Turn any table into a drum kit, using only the phone already in your pocket.**
 
+**Results write-up:** https://atharva-729.github.io/desk-band/
+
 Lay your phone flat on a table and knock the wood around it. The phone listens with its **microphone** and feels the jolt with its **motion sensor**, works out *which spot* you hit and *how hard*, and your laptop plays a drum, dhol or marimba note for that spot. No magnets, no stickers, no extra hardware.
 
 **Status: v0.3, parked (Nov 2026).** It plays, at roughly 75% right by feel on 5 pads (not a measured number: see below). Parked here while other phone-sensor instruments get built in this repo.
@@ -167,7 +169,7 @@ desk-band/
              e2e_demo.js  chord_editor.js   # older Playwright tests (4 pads)
   data/    sessions/             # exported tap features (+ labels), never raw audio
            training/             # laptop copy of training taps, pad config, session logs (gitignored)
-  docs/    index.html            # Phase 4 demo page (not yet)
+  docs/    index.html            # results write-up, served on GitHub Pages
 ```
 
 ---

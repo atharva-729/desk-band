@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Desk Band</title>
+<meta name="description" content="Can a phone lying on a table tell which spot you knocked? 81% on four spots of one wooden table, with no extra hardware.">
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,.10);
+    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+    --bar: #2a78d6; --bar-dim: #9ec5f4;
+    --good: #0ca30c; --bad: #d03b3b; --good-ink: #006300;
+    --hl: #fff3c4; --hl-ink: #0b0b0b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,.10);
+      --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+      --bar: #3987e5; --bar-dim: #1c5cab;
+      --good: #0ca30c; --bad: #d03b3b; --good-ink: #0ca30c;
+      --hl: #3a3317; --hl-ink: #f0efec;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,.10);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+    --bar: #3987e5; --bar-dim: #1c5cab;
+    --good: #0ca30c; --bad: #d03b3b; --good-ink: #0ca30c;
+    --hl: #3a3317; --hl-ink: #f0efec;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 28px 16px 64px; }
+  h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -.2px; }
+  h2 { font-size: 19px; margin: 40px 0 10px; }
+  h3 { font-size: 15px; margin: 0 0 6px; }
+  p { margin: 8px 0; }
+  a { color: var(--s1); }
+  .q { font-size: 18px; color: var(--ink2); margin: 0 0 16px; }
+  ul { padding-left: 20px; margin: 8px 0; }
+  li { margin: 4px 0; }
+  mark { background: var(--hl); color: var(--hl-ink); padding: 0 3px; border-radius: 3px; }
+  .card { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 16px; }
+  .headline { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; border-left: 4px solid var(--bar); }
+  .headline .big { font-size: 40px; font-weight: 700; line-height: 1; font-variant-numeric: normal; }
+  .headline .txt { flex: 1; min-width: 220px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .row { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 16px; align-items: start; }
+  @media (max-width: 760px) { .two, .row { grid-template-columns: 1fr; } }
+  .legend { font-size: 14px; color: var(--ink2); }
+  .legend .k { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
+  .sw { width: 14px; height: 14px; border-radius: 3px; flex: none; }
+  .note { font-size: 14px; color: var(--ink2); }
+  .fps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .fp { border: 1px solid var(--ring); border-radius: 10px; padding: 8px; }
+  .fp b { font-size: 14px; }
+  svg text { font-family: inherit; }
+  .bar { cursor: pointer; }
+  .bar:hover rect.m, .bar:focus rect.m { opacity: .85; }
+  .bar:focus { outline: none; }
+  .bar:focus-visible rect.hit { stroke: var(--ink); stroke-width: 2; }
+  .tip { position: fixed; pointer-events: none; background: var(--surface); color: var(--ink); border: 1px solid var(--ring);
+         border-radius: 8px; padding: 6px 9px; font-size: 13px; box-shadow: 0 4px 14px rgba(0,0,0,.18); display: none; z-index: 20; }
+  dialog { border: 1px solid var(--ring); border-radius: 14px; background: var(--surface); color: var(--ink); max-width: 640px; width: calc(100% - 32px); padding: 18px; }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  .knocks { display: grid; grid-template-columns: 70px 1fr; gap: 8px 10px; align-items: center; margin-top: 10px; }
+  .dots { display: flex; flex-wrap: wrap; gap: 4px; }
+  .dot { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+         font-size: 11px; font-weight: 700; color: #fff; }
+  .dot.ok { background: var(--good); }
+  .dot.no { background: var(--bad); }
+  .close { float: right; font: inherit; background: none; border: 1px solid var(--ring); color: var(--ink); border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+  .divider { margin: 56px 0 8px; padding: 14px 16px; border-radius: 12px; background: var(--surface); border: 1px dashed var(--axis); color: var(--ink2); }
+  table { border-collapse: collapse; font-size: 14px; }
+  td, th { border-bottom: 1px solid var(--grid); padding: 5px 10px; text-align: left; font-variant-numeric: tabular-nums; }
+  details summary { cursor: pointer; color: var(--ink2); font-size: 14px; margin-top: 8px; }
+  code { font: 13px ui-monospace, Menlo, Consolas, monospace; background: var(--grid); padding: 1px 4px; border-radius: 4px; }
+  pre { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 12px; overflow-x: auto; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; }
+</style>
+</head>
+<body>
+<main>
+  <!-- ============ first screen ============ -->
+  <h1>Desk Band</h1>
+  <p class="q"><b>Can a phone lying on a table tell which spot you knocked,</b> so any table becomes an instrument with no extra hardware?</p>
+
+  <div class="card headline">
+    <div class="big">81%</div>
+    <div class="txt"><mark>Right on 4 spots of the same wooden table</mark>, tested on knocks recorded separately from the ones it learned from. Random guessing gets 25%. <a href="#how">How it was measured ↓</a></div>
+  </div>
+
+  <ul>
+    <li><b>Listen and feel:</b> the phone's <b>microphone</b> hears each spot's own sound, and its <b>motion sensor</b> feels which way the jolt came from.</li>
+    <li><b>Learn in a minute:</b> the phone asks for knocks on each spot in a random order, and a tiny model trains <b>in the browser</b>. No app, no cloud, no AI service.</li>
+    <li><b>Play:</b> each knock becomes a note on the laptop (drums, dhol, marimba, chords, a pentatonic scale) within about 60 ms.</li>
+    <li><b>Any phone, any table:</b> nothing to stick on or plug in, just a web page. <a href="#build">What's built ↓</a></li>
+  </ul>
+
+  <!-- ============ data ============ -->
+  <h2>The data</h2>
+  <ul>
+    <li><b>One recording, 120 knocks:</b> an iPhone flat on a wooden table, 4 spots about 20 cm from it, 15 knocks per spot, done <b>twice in two different orders</b>.</li>
+    <li><b>Train on one pass, test on the other</b> (and the reverse), so the score never comes from knocks the model has already seen, or from the order they were knocked in.</li>
+    <li><b>What the model gets per knock:</b> 18 sound bands from low to high pitch plus loudness (mic), and 7 jolt numbers (motion).</li>
+  </ul>
+  <div class="two">
+    <div class="card">
+      <h3>The setup</h3>
+      <svg id="setup" viewBox="0 0 300 220" style="display:block;width:100%;max-height:220px" role="img" aria-label="Phone in the middle of the table, four spots around it: 1 top left, 2 top right, 3 bottom right, 4 bottom left"></svg>
+      <p class="note">Same wood everywhere: the hard case. Different objects (a book, the laptop lid) sound far more different.</p>
+    </div>
+    <div class="card">
+      <h3>Each spot rings differently</h3>
+      <div class="fps" id="fps"></div>
+      <p class="note">Average sound fingerprint per spot: bars run from low pitch (left) to high (right), height = how much of the knock is in that band.</p>
+    </div>
+  </div>
+
+  <!-- ============ results ============ -->
+  <h2>Result: which sensor does the work</h2>
+  <div class="row">
+    <div class="card">
+      <svg id="main" viewBox="0 0 560 210" role="img" aria-label="Accuracy by sensor: motion only 57%, microphone only 70%, both 81%, chance 25%"></svg>
+      <details><summary>Show as a table</summary><table id="mainTable"></table></details>
+    </div>
+    <div class="legend card">
+      <div class="k"><span class="sw" style="background:var(--bar)"></span>Share of the 120 test knocks put on the right spot</div>
+      <div class="k"><svg width="14" height="14"><line x1="7" y1="0" x2="7" y2="14" stroke="var(--muted)" stroke-width="2" stroke-dasharray="3 2"/></svg>Chance: 1 in 4</div>
+      <p style="margin-top:10px"><b>Click a bar</b> to see every knock behind it: which were right, and where the wrong ones went.</p>
+    </div>
+  </div>
+  <ul>
+    <li><mark>The microphone does most of the work</mark> (70% alone); the motion sensor adds another 11 points, because it knows which <i>direction</i> the knock came from.</li>
+    <li>The phone also shows its own "estimated accuracy", tested on the same session it trained on. That one is <mark>optimistic</mark>; only a separate, prompted round of knocks gives the real number, so the app has a <b>Check accuracy</b> button for it.</li>
+    <li><mark>Mix-ups are between neighbours, and most involve one spot</mark>: 16 of the 23 misses involve spot 4, mostly its neighbours 1 and 3 heard as 4. Opposite corners are almost never confused. Click "Both together" to see each knock.</li>
+  </ul>
+
+  <!-- ============ cost ============ -->
+  <h2>What accuracy costs</h2>
+  <div class="two">
+    <div class="card">
+      <h3>More teaching knocks, small gains</h3>
+      <svg id="perPad" viewBox="0 0 440 220" role="img" aria-label="Accuracy rises from 72% with 4 knocks per spot to 81% with 15"></svg>
+      <p class="note">Same 4 spots, model trained on a random 4–15 knocks per spot (averaged over 30 draws), tested on the other pass.</p>
+    </div>
+    <div class="card">
+      <h3>Listening longer, more accurate but slower</h3>
+      <svg id="speed" viewBox="0 0 440 220" role="img" aria-label="Fast: 45 ms delay, 71%. Balanced: 61 ms, 77%. Accurate: 84 ms, 80%."></svg>
+      <p class="note">The app's Response setting: how long after the knock the phone keeps listening. Delay = the phone's listening delay, before Wi-Fi and speakers.</p>
+    </div>
+  </div>
+  <ul>
+    <li><mark>15 knocks per spot is the sweet spot</mark>: a minute of teaching for 4 spots. Below 6 it drops faster (72% at 4).</li>
+    <li>The default "Balanced" setting gives up 3 points to <mark>save about 23 ms</mark>, which a player notices more.</li>
+    <li><mark>Clean labels matter more than more knocks.</mark> If one knock is counted twice while teaching, every later label slips by one spot: on these same knocks, that drops the fit from 89% to 26%. The app now ignores a second detection within 250 ms while teaching.</li>
+  </ul>
+
+  <!-- ============ the how ============ -->
+  <div class="divider" id="how"><b>That is the result. Everything below is the how.</b></div>
+
+  <h2>How it works</h2>
+  <pre>knock ─► phone mic (high-pass, onset detector) ─► ~60 ms snippet ─► 18-band spectrum shape + loudness ─┐
+      └► phone motion sensor (jolt around the knock) ─► 7 direction/strength numbers ──────────────────┴► logistic regression
+                                                                         ─► {spot, confidence, how hard} ─► laptop ─► sound / MIDI</pre>
+  <ul>
+    <li><b>Phone page:</b> mic with echo cancellation, noise suppression and auto-gain all off; an adaptive noise floor finds each knock; up to ~8 knocks a second.</li>
+    <li><b>Model:</b> multinomial logistic regression written by hand in plain JavaScript (<code>static/core.js</code>), trained on the phone in a fraction of a second. On this recording it beat nearest-centroid (~70%) and 3-nearest-neighbours (~65%).</li>
+    <li><b>Laptop page:</b> every sound is synthesised in the browser (no samples), and the same knocks can drive GarageBand or Ableton over MIDI.</li>
+    <li><b>Server:</b> Python standard library only. HTTPS for the phone (browsers need it for the mic and motion sensor) and a QR code to join.</li>
+  </ul>
+
+  <h2 id="build">What's built (v0.3)</h2>
+  <ul>
+    <li><b>4, 5, 6 or 8 pads</b>, each with a name ("laptop lid", "book"). Training is kept per pad count.</li>
+    <li><b>Kits:</b> drums, desi percussion (dhol, tabla, ghungroo), marimba, melody, chords, your own chords, and <b>Pentatonic</b>: any key of C D E G A, major or minor, single notes or power chords. It's built so <mark>any order of knocks sounds fine</mark>, and 5 pads is exactly one octave.</li>
+    <li><b>Check accuracy:</b> 2 prompted knocks per pad, in a random order, scored and never learned.</li>
+    <li><b>Fix it while playing:</b> tap the right pad on the phone after a wrong note and it learns from that knock.</li>
+    <li><b>Explainer panel:</b> the knock's waveform, each spot's fingerprint with this knock drawn over it, and how sure the model was.</li>
+    <li><b>Session log:</b> every knock is logged on the laptop, and a script reads it back: which mic was used, double knocks, how loud each pad was, whether the labels line up.</li>
+  </ul>
+
+  <h2>Live play and limits</h2>
+  <ul>
+    <li><b>Live on 5 pads</b> (4 table spots + the laptop lid): roughly <b>75% right by feel</b>. That's an impression, not a measured number; a full Check round wasn't run. The log showed clean labels, and the confused pads were the ones knocked softly (about 4× the detection level, against 14× for the best pad).</li>
+    <li><b>Training is per setup:</b> moving the phone or the laptop changes each spot's sound. A quick-recalibrate round is the next step if this is picked up again.</li>
+    <li><b>One phone can't split two knocks at once.</b> Chords come from one pad strumming a chord.</li>
+    <li><b>Lag:</b> ~60 ms of listening plus Wi-Fi and speakers. Fine for playing along, noticeable to a drummer. Bluetooth speakers add 150–250 ms.</li>
+    <li><b>Tested on one iPhone and one table.</b> Android, other tables and next-day reuse are untested.</li>
+    <li><b>Earlier offline analysis</b> (Python, a larger motion feature set) gave 66% motion, 76% mic and 82% both on the same recording. The numbers on this page come from the browser's own smaller feature set, which is what the app actually runs.</li>
+  </ul>
+
+  <h2>Prior art</h2>
+  <ul>
+    <li><b>Mogees</b> (2014): any surface as an instrument, with a contact sensor plugged into the phone.</li>
+    <li><b>Vibrative</b> (2012): typing on a table with an iPhone 4's accelerometer, about 80%.</li>
+    <li>Desk Band's angle: <b>no accessories</b>, mic and motion together, in a plain web page.</li>
+  </ul>
+
+  <h2>Run it</h2>
+  <pre>git clone https://github.com/atharva-729/desk-band && cd desk-band
+python3 server.py      # laptop: http://localhost:8000   phone: scan the QR code on the laptop page
+node tests/test_core.js</pre>
+  <p class="note">Phone and laptop on the same Wi-Fi. The phone warns that the certificate is self-signed: Show Details → visit. Lay the phone flat, press <b>Teach all spots</b>, then <b>Check accuracy</b>, then <b>Play</b>. Source: <a href="https://github.com/atharva-729/desk-band">github.com/atharva-729/desk-band</a> (MIT).</p>
+</main>
+
+<div class="tip" id="tip"></div>
+<dialog id="box"><button class="close" id="boxClose">Close</button><div id="boxBody"></div></dialog>
+
+<script>
+(() => {
+  "use strict";
+  const DATA = {"sets":{"motion":{"acc":0.575,"knocks":[{"spot":2,"got":2,"prob":0.63},{"spot":2,"got":2,"prob":0.62},{"spot":2,"got":2,"prob":0.88},{"spot":2,"got":2,"prob":0.48},{"spot":2,"got":4,"prob":0.81},{"spot":2,"got":2,"prob":0.79},{"spot":2,"got":2,"prob":0.91},{"spot":2,"got":3,"prob":0.52},{"spot":2,"got":1,"prob":0.57},{"spot":2,"got":2,"prob":0.55},{"spot":2,"got":3,"prob":0.54},{"spot":2,"got":2,"prob":0.53},{"spot":2,"got":2,"prob":0.76},{"spot":2,"got":1,"prob":0.52},{"spot":2,"got":3,"prob":0.52},{"spot":4,"got":4,"prob":0.86},{"spot":4,"got":4,"prob":0.7},{"spot":4,"got":4,"prob":0.81},{"spot":4,"got":4,"prob":0.73},{"spot":4,"got":4,"prob":0.81},{"spot":4,"got":4,"prob":0.89},{"spot":4,"got":4,"prob":0.9},{"spot":4,"got":4,"prob":0.56},{"spot":4,"got":4,"prob":0.88},{"spot":4,"got":4,"prob":0.79},{"spot":4,"got":4,"prob":0.83},{"spot":4,"got":3,"prob":0.84},{"spot":4,"got":3,"prob":0.54},{"spot":4,"got":4,"prob":0.88},{"spot":4,"got":4,"prob":0.54},{"spot":1,"got":1,"prob":0.89},{"spot":1,"got":1,"prob":0.69},{"spot":1,"got":1,"prob":0.61},{"spot":1,"got":4,"prob":0.56},{"spot":1,"got":4,"prob":0.54},{"spot":1,"got":1,"prob":0.97},{"spot":1,"got":1,"prob":0.68},{"spot":1,"got":1,"prob":0.49},{"spot":1,"got":4,"prob":0.37},{"spot":1,"got":1,"prob":0.87},{"spot":1,"got":1,"prob":0.76},{"spot":1,"got":4,"prob":0.9},{"spot":1,"got":4,"prob":0.6},{"spot":1,"got":1,"prob":0.82},{"spot":1,"got":4,"prob":0.94},{"spot":3,"got":1,"prob":0.89},{"spot":3,"got":2,"prob":0.8},{"spot":3,"got":3,"prob":0.78},{"spot":3,"got":2,"prob":0.58},{"spot":3,"got":3,"prob":0.72},{"spot":3,"got":3,"prob":1},{"spot":3,"got":2,"prob":0.49},{"spot":3,"got":3,"prob":0.99},{"spot":3,"got":1,"prob":0.94},{"spot":3,"got":3,"prob":1},{"spot":3,"got":3,"prob":0.77},{"spot":3,"got":3,"prob":1},{"spot":3,"got":4,"prob":0.94},{"spot":3,"got":3,"prob":1},{"spot":3,"got":1,"prob":0.95},{"spot":3,"got":3,"prob":0.45},{"spot":3,"got":2,"prob":0.67},{"spot":3,"got":2,"prob":0.87},{"spot":3,"got":2,"prob":0.85},{"spot":3,"got":4,"prob":1},{"spot":3,"got":4,"prob":0.95},{"spot":3,"got":3,"prob":0.99},{"spot":3,"got":3,"prob":0.99},{"spot":3,"got":4,"prob":1},{"spot":3,"got":3,"prob":0.85},{"spot":3,"got":2,"prob":0.66},{"spot":3,"got":4,"prob":0.73},{"spot":3,"got":3,"prob":0.99},{"spot":3,"got":2,"prob":0.86},{"spot":3,"got":3,"prob":0.98},{"spot":1,"got":1,"prob":0.99},{"spot":1,"got":2,"prob":0.41},{"spot":1,"got":2,"prob":0.42},{"spot":1,"got":4,"prob":0.68},{"spot":1,"got":4,"prob":1},{"spot":1,"got":3,"prob":0.33},{"spot":1,"got":3,"prob":0.5},{"spot":1,"got":1,"prob":0.81},{"spot":1,"got":1,"prob":0.46},{"spot":1,"got":1,"prob":0.52},{"spot":1,"got":3,"prob":0.48},{"spot":1,"got":1,"prob":0.9},{"spot":1,"got":1,"prob":0.54},{"spot":1,"got":1,"prob":0.36},{"spot":1,"got":1,"prob":0.89},{"spot":4,"got":1,"prob":0.56},{"spot":4,"got":4,"prob":1},{"spot":4,"got":4,"prob":1},{"spot":4,"got":3,"prob":0.5},{"spot":4,"got":1,"prob":0.76},{"spot":4,"got":2,"prob":0.95},{"spot":4,"got":3,"prob":0.35},{"spot":4,"got":1,"prob":0.76},{"spot":4,"got":4,"prob":0.66},{"spot":4,"got":1,"prob":0.81},{"spot":4,"got":1,"prob":0.49},{"spot":4,"got":1,"prob":0.45},{"spot":4,"got":4,"prob":0.55},{"spot":4,"got":3,"prob":0.55},{"spot":4,"got":1,"prob":0.94},{"spot":2,"got":2,"prob":0.62},{"spot":2,"got":2,"prob":0.8},{"spot":2,"got":2,"prob":0.93},{"spot":2,"got":2,"prob":0.5},{"spot":2,"got":2,"prob":0.7},{"spot":2,"got":1,"prob":0.67},{"spot":2,"got":2,"prob":0.51},{"spot":2,"got":2,"prob":0.72},{"spot":2,"got":2,"prob":0.8},{"spot":2,"got":2,"prob":0.56},{"spot":2,"got":2,"prob":0.76},{"spot":2,"got":2,"prob":0.61},{"spot":2,"got":1,"prob":0.71},{"spot":2,"got":3,"prob":0.5},{"spot":2,"got":2,"prob":0.94}]},"mic":{"acc":0.7,"knocks":[{"spot":2,"got":2,"prob":0.99},{"spot":2,"got":2,"prob":0.99},{"spot":2,"got":2,"prob":0.87},{"spot":2,"got":2,"prob":0.73},{"spot":2,"got":2,"prob":1},{"spot":2,"got":2,"prob":1},{"spot":2,"got":2,"prob":1},{"spot":2,"got":2,"prob":1},{"spot":2,"got":2,"prob":0.97},{"spot":2,"got":2,"prob":1},{"spot":2,"got":2,"prob":1},{"spot":2,"got":2,"prob":1},{"spot":2,"got":2,"prob":0.99},{"spot":2,"got":2,"prob":0.97},{"spot":2,"got":2,"prob":1},{"spot":4,"got":4,"prob":0.99},{"spot":4,"got":4,"prob":0.82},{"spot":4,"got":4,"prob":1},{"spot":4,"got":4,"prob":0.98},{"spot":4,"got":4,"prob":0.85},{"spot":4,"got":4,"prob":0.84},{"spot":4,"got":2,"prob":0.73},{"spot":4,"got":2,"prob":0.63},{"spot":4,"got":4,"prob":0.96},{"spot":4,"got":4,"prob":0.99},{"spot":4,"got":4,"prob":0.99},{"spot":4,"got":4,"prob":0.99},{"spot":4,"got":4,"prob":0.97},{"spot":4,"got":4,"prob":0.95},{"spot":4,"got":4,"prob":0.98},{"spot":1,"got":3,"prob":0.9},{"spot":1,"got":4,"prob":0.49},{"spot":1,"got":2,"prob":0.65},{"spot":1,"got":2,"prob":0.7},{"spot":1,"got":2,"prob":0.85},{"spot":1,"got":2,"prob":0.57},{"spot":1,"got":2,"prob":0.49},{"spot":1,"got":1,"prob":0.55},{"spot":1,"got":1,"prob":0.69},{"spot":1,"got":4,"prob":0.57},{"spot":1,"got":1,"prob":0.96},{"spot":1,"got":1,"prob":0.89},{"spot":1,"got":1,"prob":0.96},{"spot":1,"got":1,"prob":0.46},{"spot":1,"got":4,"prob":0.76},{"spot":3,"got":4,"prob":0.96},{"spot":3,"got":4,"prob":1},{"spot":3,"got":3,"prob":0.58},{"spot":3,"got":2,"prob":0.82},{"spot":3,"got":3,"prob":0.4},{"spot":3,"got":3,"prob":0.64},{"spot":3,"got":2,"prob":0.52},{"spot":3,"got":3,"prob":0.8},{"spot":3,"got":2,"prob":0.76},{"spot":3,"got":3,"prob":0.49},{"spot":3,"got":2,"prob":0.69},{"spot":3,"got":3,"prob":0.91},{"spot":3,"got":3,"prob":0.64},{"spot":3,"got":3,"prob":0.52},{"spot":3,"got":4,"prob":0.66},{"spot":3,"got":3,"prob":1},{"spot":3,"got":3,"prob":1},{"spot":3,"got":3,"prob":1},{"spot":3,"got":3,"prob":0.99},{"spot":3,"got":3,"prob":1},{"spot":3,"got":3,"prob":1},{"spot":3,"got":3,"prob":0.54},{"spot":3,"got":3,"prob":0.89},{"spot":3,"got":3,"prob":0.95},{"spot":3,"got":1,"prob":0.53},{"spot":3,"got":1,"prob":0.82},{"spot":3,"got":3,"prob":1},{"spot":3,"got":1,"prob":0.76},{"spot":3,"got":3,"prob":0.96},{"spot":3,"got":3,"prob":1},{"spot":1,"got":1,"prob":1},{"spot":1,"got":4,"prob":0.81},{"spot":1,"got":1,"prob":0.87},{"spot":1,"got":1,"prob":0.65},{"spot":1,"got":1,"prob":1},{"spot":1,"got":1,"prob":0.77},{"spot":1,"got":1,"prob":1},{"spot":1,"got":1,"prob":0.93},{"spot":1,"got":1,"prob":1},{"spot":1,"got":1,"prob":0.99},{"spot":1,"got":1,"prob":0.97},{"spot":1,"got":1,"prob":0.98},{"spot":1,"got":1,"prob":0.99},{"spot":1,"got":1,"prob":0.47},{"spot":1,"got":1,"prob":0.92},{"spot":4,"got":1,"prob":0.83},{"spot":4,"got":1,"prob":0.56},{"spot":4,"got":4,"prob":0.53},{"spot":4,"got":1,"prob":0.5},{"spot":4,"got":4,"prob":1},{"spot":4,"got":4,"prob":1},{"spot":4,"got":4,"prob":0.72},{"spot":4,"got":4,"prob":0.79},{"spot":4,"got":4,"prob":0.76},{"spot":4,"got":1,"prob":0.53},{"spot":4,"got":4,"prob":0.82},{"spot":4,"got":4,"prob":0.61},{"spot":4,"got":2,"prob":0.48},{"spot":4,"got":3,"prob":0.5},{"spot":4,"got":3,"prob":0.88},{"spot":2,"got":1,"prob":0.83},{"spot":2,"got":2,"prob":0.68},{"spot":2,"got":2,"prob":0.93},{"spot":2,"got":2,"prob":0.71},{"spot":2,"got":1,"prob":0.75},{"spot":2,"got":2,"prob":0.79},{"spot":2,"got":2,"prob":0.98},{"spot":2,"got":2,"prob":0.53},{"spot":2,"got":3,"prob":0.98},{"spot":2,"got":3,"prob":0.99},{"spot":2,"got":3,"prob":0.46},{"spot":2,"got":4,"prob":0.41},{"spot":2,"got":3,"prob":0.92},{"spot":2,"got":2,"prob":0.84},{"spot":2,"got":2,"prob":0.97}]},"both":{"acc":0.8083333333333333,"knocks":[{"spot":2,"got":2,"prob":0.99},{"spot":2,"got":2,"prob":0.97},{"spot":2,"got":2,"prob":0.97},{"spot":2,"got":2,"prob":0.9},{"spot":2,"got":2,"prob":0.86},{"spot":2,"got":2,"prob":1},{"spot":2,"got":2,"prob":1},{"spot":2,"got":2,"prob":1},{"spot":2,"got":2,"prob":0.88},{"spot":2,"got":2,"prob":1},{"spot":2,"got":2,"prob":0.98},{"spot":2,"got":2,"prob":1},{"spot":2,"got":2,"prob":1},{"spot":2,"got":2,"prob":0.99},{"spot":2,"got":2,"prob":1},{"spot":4,"got":4,"prob":1},{"spot":4,"got":4,"prob":0.99},{"spot":4,"got":4,"prob":1},{"spot":4,"got":4,"prob":1},{"spot":4,"got":4,"prob":1},{"spot":4,"got":4,"prob":1},{"spot":4,"got":4,"prob":1},{"spot":4,"got":4,"prob":0.99},{"spot":4,"got":4,"prob":1},{"spot":4,"got":4,"prob":1},{"spot":4,"got":4,"prob":1},{"spot":4,"got":4,"prob":1},{"spot":4,"got":4,"prob":0.97},{"spot":4,"got":4,"prob":1},{"spot":4,"got":4,"prob":1},{"spot":1,"got":4,"prob":0.62},{"spot":1,"got":4,"prob":0.77},{"spot":1,"got":1,"prob":0.56},{"spot":1,"got":1,"prob":0.62},{"spot":1,"got":1,"prob":0.44},{"spot":1,"got":1,"prob":0.92},{"spot":1,"got":1,"prob":0.72},{"spot":1,"got":1,"prob":0.75},{"spot":1,"got":1,"prob":0.58},{"spot":1,"got":4,"prob":0.5},{"spot":1,"got":1,"prob":0.97},{"spot":1,"got":4,"prob":0.87},{"spot":1,"got":1,"prob":0.97},{"spot":1,"got":1,"prob":0.67},{"spot":1,"got":4,"prob":1},{"spot":3,"got":4,"prob":0.86},{"spot":3,"got":4,"prob":0.99},{"spot":3,"got":3,"prob":0.69},{"spot":3,"got":2,"prob":0.85},{"spot":3,"got":3,"prob":0.93},{"spot":3,"got":3,"prob":0.99},{"spot":3,"got":3,"prob":0.52},{"spot":3,"got":3,"prob":0.99},{"spot":3,"got":4,"prob":0.5},{"spot":3,"got":3,"prob":0.97},{"spot":3,"got":3,"prob":0.8},{"spot":3,"got":3,"prob":1},{"spot":3,"got":4,"prob":0.81},{"spot":3,"got":3,"prob":0.93},{"spot":3,"got":4,"prob":0.54},{"spot":3,"got":1,"prob":0.86},{"spot":3,"got":3,"prob":1},{"spot":3,"got":3,"prob":1},{"spot":3,"got":3,"prob":1},{"spot":3,"got":3,"prob":0.98},{"spot":3,"got":3,"prob":0.94},{"spot":3,"got":3,"prob":1},{"spot":3,"got":3,"prob":1},{"spot":3,"got":3,"prob":0.49},{"spot":3,"got":3,"prob":0.99},{"spot":3,"got":3,"prob":0.97},{"spot":3,"got":3,"prob":1},{"spot":3,"got":3,"prob":1},{"spot":3,"got":3,"prob":1},{"spot":3,"got":3,"prob":1},{"spot":1,"got":1,"prob":1},{"spot":1,"got":1,"prob":0.56},{"spot":1,"got":1,"prob":0.91},{"spot":1,"got":4,"prob":0.5},{"spot":1,"got":1,"prob":0.98},{"spot":1,"got":2,"prob":0.5},{"spot":1,"got":1,"prob":0.99},{"spot":1,"got":1,"prob":0.93},{"spot":1,"got":1,"prob":1},{"spot":1,"got":1,"prob":0.98},{"spot":1,"got":1,"prob":0.89},{"spot":1,"got":1,"prob":0.99},{"spot":1,"got":1,"prob":0.99},{"spot":1,"got":1,"prob":0.56},{"spot":1,"got":1,"prob":0.97},{"spot":4,"got":1,"prob":0.82},{"spot":4,"got":4,"prob":0.85},{"spot":4,"got":4,"prob":0.97},{"spot":4,"got":1,"prob":0.48},{"spot":4,"got":4,"prob":0.9},{"spot":4,"got":4,"prob":0.51},{"spot":4,"got":4,"prob":0.67},{"spot":4,"got":4,"prob":0.78},{"spot":4,"got":4,"prob":0.84},{"spot":4,"got":1,"prob":0.72},{"spot":4,"got":4,"prob":0.95},{"spot":4,"got":4,"prob":0.78},{"spot":4,"got":4,"prob":0.51},{"spot":4,"got":3,"prob":0.86},{"spot":4,"got":3,"prob":0.94},{"spot":2,"got":2,"prob":0.53},{"spot":2,"got":2,"prob":0.96},{"spot":2,"got":2,"prob":0.95},{"spot":2,"got":2,"prob":0.78},{"spot":2,"got":1,"prob":0.58},{"spot":2,"got":2,"prob":0.96},{"spot":2,"got":2,"prob":1},{"spot":2,"got":2,"prob":0.83},{"spot":2,"got":3,"prob":0.99},{"spot":2,"got":3,"prob":0.97},{"spot":2,"got":2,"prob":0.63},{"spot":2,"got":2,"prob":0.65},{"spot":2,"got":1,"prob":0.39},{"spot":2,"got":2,"prob":0.86},{"spot":2,"got":2,"prob":0.99}]}},"fingerprints":{"1":[0.459,2.334,3.079,1.663,1.83,1.876,2.171,2.838,0.651,-2.096,-2.812,-2.18,-2.014,-1.728,-1.252,-0.576,-0.828,-3.414],"2":[2.295,2.049,1.625,2.84,1.968,0.953,3.05,2.278,0.825,-1.464,-2.279,-1.83,-2.22,-1.855,-1.43,-1.03,-1.766,-4.009],"3":[-0.384,0.25,1.938,1.354,1.06,0.584,1.274,1.489,1.087,0.031,-1.467,-1.011,-1.382,-0.985,-0.336,-0.365,-0.494,-2.644],"4":[3.352,3.883,3.001,2.234,1.512,0.846,1.416,1.252,0.137,-1.851,-2.799,-2.476,-2.305,-1.583,-0.881,-0.937,-1.324,-3.476]},"perPad":[{"per":4,"acc":0.718},{"per":6,"acc":0.752},{"per":8,"acc":0.766},{"per":10,"acc":0.782},{"per":12,"acc":0.793},{"per":15,"acc":0.808}],"shift":{"aligned":0.887,"shifted":0.255}};
+  const NS = "http://www.w3.org/2000/svg";
+  const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+  const spotVar = (s) => `var(--s${s})`;
+  const SPOT_NAME = { 1: "Top left", 2: "Top right", 3: "Bottom right", 4: "Bottom left" };
+  const el = (tag, attrs = {}, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+  const pct = (x) => `${Math.round(100 * x)}%`;
+  const tip = document.getElementById("tip");
+  const showTip = (e, html) => { tip.innerHTML = html; tip.style.display = "block"; tip.style.left = Math.min(e.clientX + 12, innerWidth - 220) + "px"; tip.style.top = e.clientY + 12 + "px"; };
+  const hideTip = () => (tip.style.display = "none");
+
+  // ---- setup diagram ----
+  {
+    const s = document.getElementById("setup");
+    el("rect", { x: 10, y: 10, width: 280, height: 200, rx: 18, fill: "none", stroke: "var(--axis)" }, s);
+    el("rect", { x: 135, y: 80, width: 30, height: 60, rx: 6, fill: "var(--surface)", stroke: "var(--ink2)", "stroke-width": 2 }, s);
+    el("text", { x: 150, y: 158, "text-anchor": "middle", "font-size": 11, fill: "var(--muted)" }, s).textContent = "phone";
+    const pos = { 1: [62, 55], 2: [238, 55], 3: [238, 165], 4: [62, 165] };
+    for (const k of [1, 2, 3, 4]) {
+      const [x, y] = pos[k];
+      el("line", { x1: 150, y1: 110, x2: x, y2: y, stroke: "var(--grid)", "stroke-dasharray": "3 3" }, s);
+      el("circle", { cx: x, cy: y, r: 17, fill: spotVar(k) }, s);
+      el("text", { x, y: y + 5, "text-anchor": "middle", "font-size": 15, "font-weight": 700, fill: k === 4 ? "#0b0b0b" : "#fff" }, s).textContent = k;
+    }
+    el("text", { x: 150, y: 30, "text-anchor": "middle", "font-size": 11, fill: "var(--muted)" }, s).textContent = "about 20 cm to each spot";
+  }
+
+  // ---- fingerprints (small multiples, shared scale) ----
+  {
+    const box = document.getElementById("fps"), all = Object.values(DATA.fingerprints).flat();
+    const lo = Math.min(...all), hi = Math.max(...all);
+    for (const k of [1, 2, 3, 4]) {
+      const d = document.createElement("div"); d.className = "fp";
+      d.innerHTML = `<b><span style="color:${spotVar(k)}">●</span> ${k} · ${SPOT_NAME[k]}</b>`;
+      const s = el("svg", { viewBox: "0 0 180 56", width: "100%", role: "img", "aria-label": `Spot ${k} fingerprint` }, d);
+      const fp = DATA.fingerprints[k], bw = 180 / fp.length;
+      el("line", { x1: 0, y1: 55, x2: 180, y2: 55, stroke: "var(--axis)" }, s);
+      fp.forEach((v, i) => { const h = 4 + ((v - lo) / (hi - lo)) * 48; el("rect", { x: i * bw + 1, y: 55 - h, width: bw - 2, height: h, rx: 2, fill: spotVar(k) }, s); });
+      box.appendChild(d);
+    }
+  }
+
+  // ---- main result: horizontal bars, clickable ----
+  const SETS = [["motion", "Motion sensor only"], ["mic", "Microphone only"], ["both", "Both together"]];
+  {
+    const s = document.getElementById("main"), L = 150, R = 540, top = 14, rowH = 56, x = (v) => L + v * (R - L);
+    for (const t of [0, 0.25, 0.5, 0.75, 1]) {
+      el("line", { x1: x(t), y1: top - 4, x2: x(t), y2: top + rowH * 3, stroke: t === 0 ? "var(--axis)" : "var(--grid)" }, s);
+      el("text", { x: x(t), y: top + rowH * 3 + 16, "text-anchor": "middle", "font-size": 12, fill: "var(--muted)" }, s).textContent = pct(t);
+    }
+    SETS.forEach(([key, label], i) => {
+      const acc = DATA.sets[key].acc, y = top + i * rowH + 12, g = el("g", { class: "bar", tabindex: 0, role: "button", "aria-label": `${label}: ${pct(acc)}. Show the knocks` }, s);
+      el("rect", { class: "hit", x: 0, y: y - 8, width: 560, height: 44, fill: "transparent", rx: 6 }, g);
+      el("text", { x: L - 10, y: y + 19, "text-anchor": "end", "font-size": 14, fill: "var(--ink)", "font-weight": key === "both" ? 700 : 400 }, g).textContent = label;
+      el("rect", { class: "m", x: L, y, width: x(acc) - L, height: 28, rx: 4, fill: key === "both" ? "var(--bar)" : "var(--bar-dim)" }, g);
+      el("text", { x: x(acc) + 8, y: y + 19, "font-size": 14, "font-weight": 700, fill: "var(--ink)" }, g).textContent = pct(acc);
+      g.addEventListener("click", () => openBox(key, label));
+      g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openBox(key, label); } });
+      g.addEventListener("mousemove", (e) => showTip(e, `<b>${label}</b><br>${DATA.sets[key].knocks.filter((k) => k.spot === k.got).length} of 120 right · click for details`));
+      g.addEventListener("mouseleave", hideTip);
+    });
+    el("line", { x1: x(0.25), y1: top - 6, x2: x(0.25), y2: top + rowH * 3, stroke: "var(--muted)", "stroke-width": 2, "stroke-dasharray": "4 3" }, s);
+    el("text", { x: x(0.25) + 4, y: top + 2, "font-size": 11, fill: "var(--muted)" }, s).textContent = "chance";
+    document.getElementById("mainTable").innerHTML = "<tr><th>Sensor</th><th>Right</th><th>Accuracy</th></tr>" +
+      SETS.map(([k, l]) => `<tr><td>${l}</td><td>${DATA.sets[k].knocks.filter((x) => x.spot === x.got).length} / 120</td><td>${pct(DATA.sets[k].acc)}</td></tr>`).join("");
+  }
+
+  // ---- drill-down box: every knock, right or wrong ----
+  const box = document.getElementById("box");
+  document.getElementById("boxClose").addEventListener("click", () => box.close());
+  box.addEventListener("click", (e) => { if (e.target === box) box.close(); });
+  function openBox(key, label) {
+    hideTip();
+    const ks = DATA.sets[key].knocks, ok = ks.filter((k) => k.spot === k.got).length;
+    const confused = {};
+    ks.filter((k) => k.spot !== k.got).forEach((k) => { const p = `${k.spot} → ${k.got}`; confused[p] = (confused[p] || 0) + 1; });
+    const top = Object.entries(confused).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([p, n]) => `${p} (${n}×)`).join(", ");
+    let html = `<h3 style="font-size:17px">${label}: ${ok} of 120 right</h3>
+      <p class="note">Each dot is one test knock. <span style="color:var(--good-ink);font-weight:700">✓</span> = right spot; a red dot shows the spot it was mistaken for. Most common mix-ups: ${top || "none"}.</p><div class="knocks">`;
+    for (const s of [1, 2, 3, 4]) {
+      const row = ks.filter((k) => k.spot === s), right = row.filter((k) => k.got === s).length;
+      html += `<div><b style="color:${spotVar(s)}">●</b> <b>${s}</b> <span class="note">${right}/${row.length}</span></div><div class="dots">` +
+        row.map((k) => k.got === s ? `<span class="dot ok" title="Spot ${s}: right (${Math.round(k.prob * 100)}% sure)">✓</span>`
+                                   : `<span class="dot no" title="Spot ${s} heard as ${k.got} (${Math.round(k.prob * 100)}% sure)">${k.got}</span>`).join("") + "</div>";
+    }
+    document.getElementById("boxBody").innerHTML = html + "</div>";
+    box.showModal();
+  }
+
+  // ---- line charts (single series, hover tooltips) ----
+  function lineChart(id, pts, { xLabel, xs, fmtX, tipFn, yMin, yMax }) {
+    const s = document.getElementById(id), L = 46, R = 420, T = 14, B = 180;
+    const xv = pts.map((p) => p.x), x0 = Math.min(...xv), x1 = Math.max(...xv);
+    const X = (v) => L + ((v - x0) / (x1 - x0)) * (R - L), Y = (v) => B - ((v - yMin) / (yMax - yMin)) * (B - T);
+    for (let v = yMin; v <= yMax + 1e-9; v += 0.05) {
+      el("line", { x1: L, y1: Y(v), x2: R, y2: Y(v), stroke: Math.abs(v - yMin) < 1e-9 ? "var(--axis)" : "var(--grid)" }, s);
+      el("text", { x: L - 8, y: Y(v) + 4, "text-anchor": "end", "font-size": 12, fill: "var(--muted)" }, s).textContent = pct(v);
+    }
+    for (const v of xs) el("text", { x: X(v), y: B + 18, "text-anchor": "middle", "font-size": 12, fill: "var(--muted)" }, s).textContent = fmtX(v);
+    el("text", { x: (L + R) / 2, y: B + 36, "text-anchor": "middle", "font-size": 12, fill: "var(--ink2)" }, s).textContent = xLabel;
+    el("polyline", { points: pts.map((p) => `${X(p.x)},${Y(p.y)}`).join(" "), fill: "none", stroke: "var(--bar)", "stroke-width": 2, "stroke-linejoin": "round" }, s);
+    pts.forEach((p, i) => {
+      el("circle", { cx: X(p.x), cy: Y(p.y), r: 5, fill: "var(--bar)", stroke: "var(--surface)", "stroke-width": 2 }, s);
+      if (p.label) el("text", { x: X(p.x), y: Y(p.y) - 12, "text-anchor": i === 0 ? "start" : i === pts.length - 1 ? "end" : "middle", "font-size": 12, fill: "var(--ink)", "font-weight": 600 }, s).textContent = p.label;
+      const hit = el("circle", { cx: X(p.x), cy: Y(p.y), r: 16, fill: "transparent" }, s);
+      hit.addEventListener("mousemove", (e) => showTip(e, tipFn(p))); hit.addEventListener("mouseleave", hideTip);
+    });
+  }
+  lineChart("perPad", DATA.perPad.map((p, i, a) => ({ x: p.per, y: p.acc, label: i === 0 || i === a.length - 1 ? pct(p.acc) : "" })),
+    { xLabel: "teaching knocks per spot", xs: DATA.perPad.map((p) => p.per), fmtX: String, yMin: 0.65, yMax: 0.85,
+      tipFn: (p) => `<b>${p.x} knocks per spot</b><br>${pct(p.y)} right on the other pass` });
+  const SPEED = [{ x: 45, y: 0.71, name: "Fast" }, { x: 61, y: 0.77, name: "Balanced (default)" }, { x: 84, y: 0.80, name: "Accurate" }];
+  lineChart("speed", SPEED.map((p) => ({ ...p, label: `${p.name.split(" ")[0]} ${pct(p.y)}` })),
+    { xLabel: "phone listening delay (ms)", xs: SPEED.map((p) => p.x), fmtX: (v) => `${v} ms`, yMin: 0.65, yMax: 0.85,
+      tipFn: (p) => `<b>${p.name}</b><br>${p.x} ms delay · ${pct(p.y)} right` });
+})();
+</script>
+</body>
+</html>
