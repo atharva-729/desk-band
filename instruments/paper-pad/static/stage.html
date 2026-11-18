@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paper Pad · Stage</title>
+<style>
+  :root { --bg:#0b0c10; --panel:#15171e; --line:#262a35; --ink:#eef0f6; --dim:#8b90a3; --accent:#f2c14e; --ok:#3dd6a3; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; background:radial-gradient(1200px 700px at 50% 40%, #151826, var(--bg));
+         color:var(--ink); font:15px/1.4 -apple-system, system-ui, "Segoe UI", sans-serif; display:flex; flex-direction:column; }
+  header { display:flex; align-items:center; gap:16px; padding:18px 24px; }
+  h1 { margin:0; font-size:22px; letter-spacing:.5px; }
+  .dot { width:10px; height:10px; border-radius:50%; background:#555; display:inline-block; margin-right:6px; }
+  .dot.on { background:var(--ok); box-shadow:0 0 10px var(--ok); }
+  .status { color:var(--dim); font-size:14px; }
+  .spacer { flex:1; }
+  button { font:inherit; color:var(--ink); background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:8px 12px; cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#14151a; font-weight:700; }
+  main { flex:1; display:grid; grid-template-columns:minmax(0, 1fr) 320px; gap:20px; padding:4px 24px 24px; align-items:start; }
+  @media (max-width: 900px) { main { grid-template-columns:1fr; } }
+  .card { background:rgba(21,23,30,.9); border:1px solid var(--line); border-radius:16px; padding:12px 14px; }
+  .card h3 { margin:0 0 8px; font-size:13px; letter-spacing:.6px; text-transform:uppercase; color:var(--dim); font-weight:700; }
+  .paper { position:relative; height:clamp(220px, 44vh, 480px); border-radius:6px; background:#f4f1e8; color:#2b2b2b;
+           box-shadow:0 30px 80px rgba(0,0,0,.5); display:flex; flex-direction:column; align-items:center; justify-content:center;
+           background-image:repeating-linear-gradient(#f4f1e8 0 31px, #cfd8e6 31px 32px); overflow:hidden; }
+  .paper .big { font-size:clamp(28px, 5vw, 56px); font-weight:800; }
+  .paper .small { font-size:15px; color:#6b6b6b; }
+  .ring { position:absolute; left:50%; top:50%; width:20px; height:20px; margin:-10px; border-radius:50%; border:3px solid var(--accent);
+          animation:ring .6s ease-out forwards; pointer-events:none; }
+  @keyframes ring { to { transform:scale(22); opacity:0; } }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  td, th { text-align:left; padding:4px 6px; border-bottom:1px solid var(--line); }
+  th { color:var(--dim); font-weight:600; }
+  #join .qr { background:#fff; border-radius:12px; padding:8px; width:172px; height:172px; margin:4px auto 8px; }
+  #join .qr svg { width:100%; height:100%; display:block; }
+  #join .url { font:600 13px ui-monospace, Menlo, monospace; text-align:center; word-break:break-all; }
+  #join ol { margin:8px 0 0 18px; padding:0; font-size:13px; color:var(--dim); }
+  .kv { display:grid; grid-template-columns:auto 1fr; gap:4px 12px; font-size:13px; }
+  .kv span:nth-child(odd) { color:var(--dim); }
+  .side { display:flex; flex-direction:column; gap:12px; }
+  .col { display:flex; flex-direction:column; gap:12px; min-width:0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Paper Pad</h1>
+  <span class="status"><span class="dot" id="conn"></span><span id="connText">connecting…</span></span>
+  <span class="spacer"></span>
+  <button id="sound" class="primary">Start sound</button>
+</header>
+
+<main>
+  <div class="col">
+    <div class="paper" id="paper">
+      <div class="big" id="lastBig">waiting for the phone</div>
+      <div class="small" id="lastSmall">Phase 0: plumbing check. Taps on the paper show up here.</div>
+    </div>
+    <div class="card">
+      <h3>Events from the phone</h3>
+      <table><thead><tr><th>time</th><th>event</th><th>loudness</th><th>phone listening delay</th></tr></thead><tbody id="rows"></tbody></table>
+    </div>
+  </div>
+  <div class="side">
+    <div class="card" id="join">
+      <h3>Join with a phone</h3>
+      <div class="qr" id="qr"></div>
+      <div class="url" id="joinUrl">…</div>
+      <ol>
+        <li>Scan with the phone camera, open the link.</li>
+        <li>“Not private” warning → Show Details / Advanced → visit.</li>
+        <li>Start sensors, then tap the paper.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>Phone</h3>
+      <div class="kv">
+        <span>status</span><span id="phState">not connected</span>
+        <span>mic</span><span id="phMic">—</span>
+        <span>sample rate</span><span id="phSr">—</span>
+        <span>motion</span><span id="phMotion">—</span>
+        <span>events</span><span id="phCount">0</span>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="vendor/qrcode.js"></script>
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+
+  // ---------- sound: a short synthesised knock, only after a click (browsers block audio until then) ----------
+  let ac = null;
+  $("sound").addEventListener("click", async () => {
+    if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)();
+    await ac.resume();
+    $("sound").textContent = "Sound on"; $("sound").classList.remove("primary");
+    knock(0.6);
+  });
+  function knock(vel) {
+    if (!ac || ac.state !== "running") return;
+    const t = ac.currentTime, o = ac.createOscillator(), g = ac.createGain();
+    o.type = "sine"; o.frequency.setValueAtTime(180, t); o.frequency.exponentialRampToValueAtTime(60, t + 0.12);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.9 * vel, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+    o.connect(g).connect(ac.destination); o.start(t); o.stop(t + 0.2);
+  }
+
+  // ---------- join card: QR code for the phone link ----------
+  fetch("/info").then((r) => r.json()).then(({ phone_url }) => {
+    $("joinUrl").textContent = phone_url;
+    try {
+      const qr = qrcode(0, "M"); qr.addData(phone_url); qr.make();
+      $("qr").innerHTML = qr.createSvgTag({ cellSize: 4, margin: 1, scalable: true });
+    } catch { $("qr").style.display = "none"; } // offline: the link text still works
+  }).catch(() => {});
+
+  // ---------- phone status (heartbeat every 2 s) ----------
+  let lastBeat = 0, events = 0;
+  function phoneStatus(m) {
+    lastBeat = performance.now();
+    $("phMic").textContent = m.mic || "—";
+    $("phSr").textContent = m.sr ? `${(m.sr / 1000).toFixed(1)} kHz` : "—";
+    $("phMotion").textContent = m.motion ? (m.motionRate ? `on · ${m.motionRate} readings/s` : "allowed, no readings yet") : "off (mic only)";
+    $("phState").textContent = m.micOK === false ? "connected, mic paused" : "connected";
+  }
+  setInterval(() => {
+    const live = lastBeat && performance.now() - lastBeat < 5000;
+    if (!live && lastBeat) $("phState").textContent = "not heard from for 5 s";
+    $("connText").textContent = !esOpen ? "reconnecting…" : live ? "phone connected" : "server connected · waiting for phone";
+  }, 500);
+
+  // ---------- events ----------
+  function onHit(m) {
+    events++;
+    $("phCount").textContent = events;
+    $("join").classList.add("hidden");
+    $("lastBig").textContent = m.kind === "test" ? "test hit" : "tap heard";
+    $("lastSmall").textContent = m.kind === "test" ? "from the phone's button" : `loudness ${Math.round(m.vel * 100)}% · phone listening delay ${m.delay} ms`;
+    const r = document.createElement("div"); r.className = "ring"; $("paper").appendChild(r); setTimeout(() => r.remove(), 650);
+    knock(m.vel || 0.6);
+    const tr = document.createElement("tr");
+    const cells = [new Date().toLocaleTimeString(), m.kind === "test" ? "test hit" : "sound", `${Math.round((m.vel || 0) * 100)}%`, m.kind === "test" ? "—" : `${m.delay} ms`];
+    for (const c of cells) { const td = document.createElement("td"); td.textContent = c; tr.appendChild(td); }
+    $("rows").prepend(tr);
+    while ($("rows").children.length > 10) $("rows").lastChild.remove();
+  }
+
+  let esOpen = false;
+  const es = new EventSource("/events");
+  es.onopen = () => { esOpen = true; $("conn").classList.add("on"); };
+  es.onerror = () => { esOpen = false; $("conn").classList.remove("on"); };
+  es.onmessage = (e) => {
+    const m = JSON.parse(e.data);
+    if (m.type === "phone") phoneStatus(m);
+    if (m.type === "hit") { lastBeat = lastBeat || performance.now(); onHit(m); }
+  };
+})();
+</script>
+</body>
+</html>
