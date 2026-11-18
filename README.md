@@ -4,7 +4,21 @@
 
 Lay your phone flat on a table and knock the wood around it. The phone listens with its **microphone** and feels the jolt with its **motion sensor**, works out *which spot* you hit and *how hard*, and your laptop plays a drum, dhol or marimba note for that spot. No magnets, no stickers, no extra hardware.
 
-**Status: v0.2.** v0 was played on a real iPhone and worked. Feedback from that session:
+**Status: v0.3, parked (Nov 2026).** It plays, at roughly 75% right by feel on 5 pads (not a measured number: see below). Parked here while other phone-sensor instruments get built in this repo.
+
+**New in v0.3:**
+- **4, 5, 6 or 8 pads**, set on the phone (**Pads**), each with a **name** ("laptop lid", "book"). The laptop page follows live. Pads 5+ suit other objects: a different material sounds more distinct, which is the best accuracy trick.
+- Training is stored **per pad count** (`deskband.v3.<n>p.<ms>` on the phone, `data/training/training-<n>p-<ms>ms.json` on the laptop). Old 4-pad training migrates automatically.
+- **Check accuracy:** 2 prompted knocks per pad, in random order, scored against the model and never learned. This is the honest number; the phone's "estimated accuracy" is same-session and optimistic.
+- **Pentatonic kit** (laptop page): key C/D/E/G/A, major or minor, single notes or power chords, marimba/keys/pluck. Five notes per octave with no clashing pairs, so any order of knocks sounds fine. 5 pads = exactly one octave.
+- Every kit covers 8 pads. **Melody** follows the pad count: 4 = C D E G, 5 = C D E F G, 6 = C to A (Twinkle Twinkle), 8 = a full octave.
+- **Teaching guard:** a second detection within 250 ms of a teaching or check knock is ignored. Without it, one rattly knock shifts every later label by one pad (on recording #3, one shift drops the fit from 88% to 31%).
+- **Session log:** every knock (teaching, check, play, corrections, resets) is logged on the laptop in `data/training/log-<date>.jsonl` (gitignored). `node tools/analysis/read_log.js <log>` reports the mic in use, ignored double knocks, loudness per pad, whether the labels line up, check results and what play mode heard.
+- **Mic and sound health:** the phone shows which mic it hears through (Bluetooth earbuds paired with the phone take over its mic: then it hears the air, not the table) and recovers if the mic stops. The laptop plays a chime on start and has a 🔊 Test sound button.
+
+**Last live session (5 pads, iPhone mic, 80 teaching knocks):** labels lined up (89% fit as recorded, ~20% when shifted), and the guard caught one double knock. Pads knocked softly (≈4× the detection threshold) were the ones confused; pad 3 was knocked at ≈14×. The check round was stopped after 2 knocks, so there is **no measured accuracy** for this setup yet. Next time: knock every pad firmly, and finish a full Check round.
+
+**Earlier, v0.2.** v0 was played on a real iPhone and worked. Feedback from that session:
 1. A bit of lag.
 2. You had to wait about half a second between notes.
 3. Too many knocks landed on pad 1.
@@ -140,13 +154,19 @@ knock ─► phone mic (high-pass, onset detector) ─► 75 ms snippet ─► 1
 desk-band/
   README.md  server.py  .gitignore
   static/  core.js  phone.html  stage.html
+           pads.js               # shared pad config: up to 8 pads, colours, default names, grid layouts
   CLAUDE.md                      # notes for Claude Code (its longer handoff notes stay local, not in the repo)
   static/vendor/qrcode.js        # QR code library (MIT), so the join QR works offline
-  tests/   test_core.js          # offline synthetic test (detection, classification, 8 knocks/sec)
+  tests/   test_core.js          # offline synthetic test (detection, classification at 4/5/6/8 pads, 8 knocks/sec)
   tools/   analysis/             # Python scripts used on the phyphox + voice-memo recordings
-           browser-tests/        # Playwright tests that feed a WAV as a fake phone mic
+           analysis/read_log.js  # reads a session log and says what went wrong
+           browser-tests/        # browser tests; the new ones need only Chrome/Edge and Node 22+ (no Playwright):
+             pads_e2e.js         #   fake-mic phone + laptop at 4/5/6/8 pads, check round, mic recovery, migration
+             pentatonic.js       #   every key/mode/style/voice at every pad count, real frequencies and MIDI notes
+             cdp.js              #   the small Chrome driver they share (starts its own server + throwaway data folder)
+             e2e_demo.js  chord_editor.js   # older Playwright tests (4 pads)
   data/    sessions/             # exported tap features (+ labels), never raw audio
-           training/             # laptop copy of training taps (gitignored)
+           training/             # laptop copy of training taps, pad config, session logs (gitignored)
   docs/    index.html            # Phase 4 demo page (not yet)
 ```
 

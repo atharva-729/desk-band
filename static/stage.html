@@ -28,7 +28,8 @@
   .card h3 { margin:0 0 8px; font-size:13px; letter-spacing:.6px; text-transform:uppercase; color:var(--dim); font-weight:700; }
   .card .why { font-size:12px; color:var(--dim); margin-top:6px; }
   canvas { display:block; width:100%; }
-  .fps { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .fps { display:grid; grid-template-columns:repeat(var(--fpCols, 2), minmax(0, 1fr)); gap:8px; }
+  .fp .t .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-left:4px; }
   .fp { border:1px solid var(--line); border-radius:10px; padding:4px 6px 6px; transition:border-color .15s, box-shadow .15s; }
   .fp .t { font-size:12px; color:var(--dim); display:flex; justify-content:space-between; }
   .fp.match { box-shadow:0 0 0 2px currentColor; }
@@ -46,11 +47,11 @@
   .table { position:relative; width:100%; aspect-ratio: 16 / 10; border-radius:28px;
            background:linear-gradient(160deg, #2a1f17, #1b140f); border:1px solid #3a2b20;
            box-shadow: inset 0 0 80px rgba(0,0,0,.6), 0 30px 80px rgba(0,0,0,.5);
-           display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:6%; padding:6%; }
+           display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:var(--gap, 6%); padding:6%; }
   .pad { position:relative; border-radius:22px; border:2px solid; display:flex; flex-direction:column; align-items:center;
          justify-content:center; background:rgba(255,255,255,.02); overflow:hidden; transition:transform .06s; }
   .pad .num { font-size:clamp(28px, 5vw, 54px); font-weight:800; opacity:.9; }
-  .pad .lab { font-size:14px; color:var(--dim); }
+  .pad .lab { font-size:14px; color:var(--dim); text-align:center; padding:0 6px; }
   .pad .snd { font-size:13px; margin-top:4px; opacity:.8; }
   .pad .glow { position:absolute; inset:0; opacity:0; transition:opacity .35s ease-out; }
   .pad.hit { transform:scale(.97); }
@@ -58,7 +59,7 @@
   .ring { position:absolute; left:50%; top:50%; width:20px; height:20px; margin:-10px; border-radius:50%; border:3px solid;
           animation:ring .6s ease-out forwards; pointer-events:none; }
   @keyframes ring { to { transform:scale(18); opacity:0; } }
-  .phone { position:absolute; left:50%; top:50%; width:46px; height:82px; margin:-41px 0 0 -23px; border-radius:10px;
+  .phone { position:absolute; left:var(--phoneLeft, 50%); top:50%; width:46px; height:82px; margin:-41px 0 0 -23px; border-radius:10px;
            border:2px solid #8b90a3; background:#0b0c10; z-index:2; }
   .phone:after { content:""; position:absolute; top:5px; left:50%; width:14px; height:3px; margin-left:-7px; background:#8b90a3; border-radius:2px; }
   footer { display:flex; gap:18px; padding:14px 24px; color:var(--dim); font-size:13px; flex-wrap:wrap; }
@@ -80,27 +81,31 @@
   .eopts { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:12px 0; color:var(--dim); font-size:14px; }
   .chart { font-size:12px; color:var(--dim); border-collapse:collapse; margin-top:6px; }
   .chart td { border:1px solid var(--line); padding:3px 6px; text-align:center; }
+  .kitopts { display:flex; gap:14px; flex-wrap:wrap; align-items:center; padding:0 24px 10px; color:var(--dim); font-size:14px; }
+  .kitopts b { color:var(--ink); }
   .hidden { display:none !important; }
 </style>
 </head>
 <body>
 <div id="gate"><div class="box">
   <h1>Desk Band</h1>
-  <p class="status">This screen plays the sounds. Open the phone link printed in your terminal, teach it your four spots, press Play there, and knock.</p>
+  <p class="status">This screen plays the sounds (you'll hear a short chime when it starts). Open the phone link printed in your terminal, teach it your spots, press Play there, and knock.</p>
   <button id="go">Start sound</button>
 </div></div>
 
 <header>
   <h1>Desk Band</h1>
   <span class="status"><span id="conn" class="dot"></span><span id="connText">connecting…</span></span>
+  <button id="sndBtn" title="Play a test chime. If you hear nothing, check the tab isn't muted and Windows/Mac is sending sound to your headphones.">🔊 Test sound</button>
   <div class="spacer"></div>
   <label class="status">Kit
     <select id="kit">
       <option value="drums">Drum kit</option>
       <option value="desi">Desi (dhol + tabla)</option>
       <option value="marimba">Marimba</option>
-      <option value="chords">Chords (C · G · Am · F)</option>
-      <option value="melody">Melody (C · D · E · G)</option>
+      <option value="chords">Chords (C · G · Am · F …)</option>
+      <option value="melody">Melody (C D E …)</option>
+      <option value="pentatonic">Pentatonic (can't sound bad)</option>
       <option value="custom">My chords (editable)</option>
     </select>
   </label>
@@ -110,6 +115,14 @@
   <button id="explainBtn">Hide explainer</button>
   <button id="recBtn" class="rec" title="Record this screen with the sound to a video file">● Record demo</button>
 </header>
+
+<div id="pentaOpts" class="kitopts hidden">
+  <label>Key <select id="pKey"><option>C</option><option>D</option><option>E</option><option>G</option><option>A</option></select></label>
+  <label>Mode <select id="pMode"><option value="major">Major (bright)</option><option value="minor">Minor (bluesy)</option></select></label>
+  <label>Style <select id="pStyle"><option value="notes">Single notes</option><option value="power">Power chords</option></select></label>
+  <label>Voice <select id="pVoice"><option value="marimba">Marimba</option><option value="keys">Keys</option><option value="pluck">Pluck</option></select></label>
+  <span id="pScale"></span>
+</div>
 
 <aside id="editor" class="hidden">
   <h2>My chords</h2>
@@ -174,39 +187,52 @@
   <span id="count">0 hits</span>
   <span id="last">—</span>
   <span id="lag"></span>
-  <span>Keys 1–4 play the pads without the phone.</span>
+  <span id="keysHint">Keys 1–4 play the pads without the phone.</span>
 </footer>
 
 <script src="vendor/qrcode.js"></script>
+<script src="pads.js"></script>
 <script>
 (() => {
   "use strict";
-  const ZONES = [
-    { id: 1, name: "Top left", color: "#ff6b5a" },
-    { id: 2, name: "Top right", color: "#ffc23d" },
-    { id: 4, name: "Bottom left", color: "#5aa8ff" },
-    { id: 3, name: "Bottom right", color: "#3dd6a3" },
-  ];
+  // Pad count + names come from the laptop (/pads), set on the phone page. Ids run 1..count.
+  let padCfg = DeskPads.normalize(null), ZONES = DeskPads.active(padCfg), PAD_IDS = ZONES.map((z) => z.id);
+  const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
+  // Every kit covers 8 pads; pads 1–4 keep their original sounds.
   const KITS = {
-    drums:   { 1: ["Kick", kick], 2: ["Snare", snare], 3: ["Hi-hat", hat], 4: ["Clap", clap] },
-    desi:    { 1: ["Dhol (low)", dholLow], 2: ["Dhol (slap)", dholSlap], 3: ["Tabla na", tablaNa], 4: ["Shaker", shaker] },
+    drums:   { 1: ["Kick", kick], 2: ["Snare", snare], 3: ["Hi-hat", hat], 4: ["Clap", clap],
+               5: ["Open hat", openHat], 6: ["Low tom", (v) => tom(98, v)], 7: ["High tom", (v) => tom(165, v)], 8: ["Cowbell", cowbell] },
+    desi:    { 1: ["Dhol (low)", dholLow], 2: ["Dhol (slap)", dholSlap], 3: ["Tabla na", tablaNa], 4: ["Shaker", shaker],
+               5: ["Tabla tin", tablaTin], 6: ["Dholak", dholak], 7: ["Ghungroo", ghungroo], 8: ["Tabla ge", tablaGe] },
     marimba: { 1: ["C", (v) => mallet(523.25, v)], 2: ["E", (v) => mallet(659.25, v)],
-               3: ["A", (v) => mallet(880.0, v)], 4: ["G", (v) => mallet(783.99, v)] },
-    melody:  { 1: ["C", (v) => mallet(523.25, v)], 2: ["D", (v) => mallet(587.33, v)],
-               3: ["E", (v) => mallet(659.25, v)], 4: ["G", (v) => mallet(783.99, v)] },
+               3: ["A", (v) => mallet(880.0, v)], 4: ["G", (v) => mallet(783.99, v)],
+               5: ["D", (v) => mallet(587.33, v)], 6: ["low G", (v) => mallet(392.0, v)],
+               7: ["high C", (v) => mallet(1046.5, v)], 8: ["high E", (v) => mallet(1318.51, v)] },
     chords:  { 1: ["C major", (v) => strum(CHORDS[1], v)], 2: ["G major", (v) => strum(CHORDS[2], v)],
-               3: ["A minor", (v) => strum(CHORDS[3], v)], 4: ["F major", (v) => strum(CHORDS[4], v)] },
+               3: ["A minor", (v) => strum(CHORDS[3], v)], 4: ["F major", (v) => strum(CHORDS[4], v)],
+               5: ["D minor", (v) => strum(CHORDS[5], v)], 6: ["E minor", (v) => strum(CHORDS[6], v)],
+               7: ["G7", (v) => strum(CHORDS[7], v)], 8: ["C (high)", (v) => strum(CHORDS[8], v)] },
   };
   // MIDI note numbers per kit and pad
-  const CHORDS = { 1: [60, 64, 67, 72], 2: [55, 59, 62, 67], 3: [57, 60, 64, 69], 4: [53, 57, 60, 65] };
+  const CHORDS = { 1: [60, 64, 67, 72], 2: [55, 59, 62, 67], 3: [57, 60, 64, 69], 4: [53, 57, 60, 65],
+                   5: [50, 57, 62, 65], 6: [52, 59, 64, 67], 7: [55, 59, 62, 65], 8: [72, 76, 79, 84] };
   const MIDI_MAP = {
-    drums: { ch: 9, notes: { 1: [36], 2: [38], 3: [42], 4: [39] } },
-    desi: { ch: 9, notes: { 1: [41], 2: [37], 3: [60], 4: [70] } },
-    marimba: { ch: 0, notes: { 1: [72], 2: [76], 3: [81], 4: [79] } },
+    drums: { ch: 9, notes: { 1: [36], 2: [38], 3: [42], 4: [39], 5: [46], 6: [45], 7: [50], 8: [56] } },
+    desi: { ch: 9, notes: { 1: [41], 2: [37], 3: [60], 4: [70], 5: [63], 6: [64], 7: [54], 8: [61] } },
+    marimba: { ch: 0, notes: { 1: [72], 2: [76], 3: [81], 4: [79], 5: [74], 6: [67], 7: [84], 8: [88] } },
     chords: { ch: 0, notes: CHORDS },
-    melody: { ch: 0, notes: { 1: [72], 2: [74], 3: [76], 4: [79] } },
   };
-  const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
+  // Melody depends on the pad count: 4 = C D E G (as before), 5 = C D E F G, 6 = C–A (Twinkle Twinkle), 8 = a full octave
+  const MELODY = { 4: [72, 74, 76, 79], 5: [72, 74, 76, 77, 79], 6: [72, 74, 76, 77, 79, 81], 8: [72, 74, 76, 77, 79, 81, 83, 84] };
+  function rebuildMelody() {
+    const kitObj = {}, midi = {};
+    MELODY[padCfg.count].forEach((n, i) => {
+      kitObj[i + 1] = [SHARPS[n % 12] + (n >= 84 ? "'" : ""), (v) => mallet(mtof(n), v)];
+      midi[i + 1] = [n];
+    });
+    KITS.melody = kitObj;
+    MIDI_MAP.melody = { ch: 0, notes: midi };
+  }
   let ctx = null, master = null, kit = "drums", hits = 0, midiOut = null;
   const $ = (id) => document.getElementById(id);
 
@@ -214,12 +240,15 @@
   const CUSTOM_KEY = "deskband.mychords.v1";
   const CUSTOM_DEFAULT = {
     pads: { 1: { name: "C major", notes: "C4 E4 G4 C5" }, 2: { name: "G major", notes: "G3 B3 D4 G4" },
-            3: { name: "A minor", notes: "A3 C4 E4 A4" }, 4: { name: "F major", notes: "F3 A3 C4 F4" } },
+            3: { name: "A minor", notes: "A3 C4 E4 A4" }, 4: { name: "F major", notes: "F3 A3 C4 F4" },
+            5: { name: "D minor", notes: "D3 A3 D4 F4" }, 6: { name: "E minor", notes: "E3 B3 E4 G4" },
+            7: { name: "G7", notes: "G3 B3 D4 F4" }, 8: { name: "C (high)", notes: "C5 E5 G5 C6" } },
     voice: "pluck", len: "ring", strum: 18,
   };
   let custom = loadCustom();
   function loadCustom() {
-    try { const c = JSON.parse(localStorage.getItem(CUSTOM_KEY)); if (c && c.pads) return c; } catch {}
+    // older saves only have pads 1–4: fill the rest from the defaults
+    try { const c = JSON.parse(localStorage.getItem(CUSTOM_KEY)); if (c && c.pads) return { ...c, pads: { ...CUSTOM_DEFAULT.pads, ...c.pads } }; } catch {}
     return JSON.parse(JSON.stringify(CUSTOM_DEFAULT));
   }
   function saveCustom() { try { localStorage.setItem(CUSTOM_KEY, JSON.stringify(custom)); } catch {} }
@@ -238,58 +267,111 @@
   }
   function rebuildCustom() {
     const kitObj = {}, midi = {};
-    for (const id of [1, 2, 3, 4]) {
+    for (const id of PAD_IDS) {
       const p = custom.pads[id], parsed = parseNotes(p.notes), notes = parsed.notes || [];
       kitObj[id] = [p.name || `Pad ${id}`, (v) => playChord(notes, v)];
       midi[id] = notes;
     }
     KITS.custom = kitObj;
     MIDI_MAP.custom = { ch: 0, notes: midi };
-    if (kit === "custom") labelPads();
   }
+
+  // ---------- Pentatonic: 5 notes per octave with no clashing pairs, so any order of knocks sounds fine ----------
+  const PENTA_KEY = "deskband.pentatonic.v1";
+  const PENTA_DEFAULT = { key: "C", mode: "major", style: "notes", voice: "marimba" };
+  const PENTA_ROOT = { C: 72, D: 74, E: 76, G: 67, A: 69 }; // C5 D5 E5, G4 A4: the key moves the scale up or down, staying mid-range
+  const PENTA_STEPS = { major: [0, 2, 4, 7, 9], minor: [0, 3, 5, 7, 10] }; // 1 2 3 5 6  |  1 b3 4 5 b7
+  const SHARPS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+  const FLATS = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"]; // minor keys read better in flats (C minor: Eb, Bb)
+  let penta = loadPenta();
+  function loadPenta() {
+    try { const p = JSON.parse(localStorage.getItem(PENTA_KEY)); if (p && PENTA_ROOT[p.key] != null) return { ...PENTA_DEFAULT, ...p }; } catch {}
+    return { ...PENTA_DEFAULT };
+  }
+  function savePenta() { try { localStorage.setItem(PENTA_KEY, JSON.stringify(penta)); } catch {} }
+  // k-th step up the scale (0 = root); past 5 steps it wraps into the next octave
+  const pentaNote = (k) => PENTA_ROOT[penta.key] + 12 * Math.floor(k / 5) + PENTA_STEPS[penta.mode][k % 5];
+  const pentaName = (k) => (penta.mode === "minor" ? FLATS : SHARPS)[pentaNote(k) % 12] + "'".repeat(Math.floor(k / 5));
+  function playPenta(notes, v) {
+    const vv = notes.length > 1 ? v * 0.6 : v;
+    notes.forEach((n, i) => {
+      const f = mtof(n);
+      if (penta.voice === "keys") keysNote(f, vv, i * 0.012, 1.2);
+      else if (penta.voice === "pluck") pluck(f, vv * 1.8, i * 0.012);
+      else mallet(f, vv);
+    });
+  }
+  function rebuildPenta() {
+    const kitObj = {}, midi = {}, power = penta.style === "power";
+    PAD_IDS.forEach((id, k) => { // pad 1 = root, then up the scale in pad order
+      const r = pentaNote(k), notes = power ? [r - 12, r - 5, r] : [r]; // power chord: root + fifth + octave
+      kitObj[id] = [pentaName(k) + (power ? " power" : ""), (v) => playPenta(notes, v)];
+      midi[id] = notes;
+    });
+    KITS.pentatonic = kitObj;
+    MIDI_MAP.pentatonic = { ch: 0, notes: midi };
+    const scale = [0, 1, 2, 3, 4].map(pentaName).join(" ");
+    $("pScale").innerHTML = `${penta.key} ${penta.mode} pentatonic = <b>${scale}</b> · pads play <b>${PAD_IDS.map((_, k) => pentaName(k)).join(" ")}</b>`;
+  }
+  $("pKey").value = penta.key; $("pMode").value = penta.mode; $("pStyle").value = penta.style; $("pVoice").value = penta.voice;
+  for (const [id, field] of [["pKey", "key"], ["pMode", "mode"], ["pStyle", "style"], ["pVoice", "voice"]])
+    $(id).addEventListener("change", (e) => { penta[field] = e.target.value; savePenta(); rebuildPenta(); labelPads(); drawFps(); });
 
   // ---------- pads ----------
-  const pads = {};
-  for (const z of ZONES) {
-    const el = document.createElement("div");
-    el.className = "pad";
-    el.style.borderColor = z.color;
-    el.innerHTML = `<div class="glow" style="background:radial-gradient(circle, ${z.color}, transparent 70%)"></div>
-      <div class="num" style="color:${z.color}">${z.id}</div><div class="lab">${z.name}</div><div class="snd"></div>`;
-    $("table").appendChild(el);
-    pads[z.id] = el;
+  let pads = {};
+  function buildTable() {
+    const t = $("table"), lay = DeskPads.layout(padCfg.count, "wide"), gap = lay.cols > 2 ? 4 : 6, padPct = 6;
+    t.querySelectorAll(".pad").forEach((e) => e.remove());
+    t.style.gridTemplateColumns = `repeat(${lay.cols}, 1fr)`; t.style.gridTemplateAreas = lay.areas;
+    t.style.setProperty("--gap", gap + "%");
+    const w = (100 - 2 * padPct - (lay.cols - 1) * gap) / lay.cols; // the phone sits between pads 1–4
+    t.style.setProperty("--phoneLeft", `${padPct + w + gap / 2}%`);
+    pads = {};
+    for (const z of ZONES) {
+      const el = document.createElement("div");
+      el.className = "pad"; el.style.borderColor = z.color; el.style.gridArea = `p${z.id}`;
+      el.innerHTML = `<div class="glow" style="background:radial-gradient(circle, ${z.color}, transparent 70%)"></div>
+        <div class="num" style="color:${z.color}">${z.id}</div><div class="lab"></div><div class="snd"></div>`;
+      el.querySelector(".lab").textContent = z.name;
+      t.appendChild(el);
+      pads[z.id] = el;
+    }
   }
-  function labelPads() { for (const z of ZONES) pads[z.id].querySelector(".snd").textContent = KITS[kit][z.id][0]; }
-  rebuildCustom();
-  labelPads();
+  function labelPads() {
+    for (const z of ZONES) pads[z.id].querySelector(".snd").textContent = KITS[kit][z.id][0];
+    $("pentaOpts").classList.toggle("hidden", kit !== "pentatonic");
+  }
 
   // editor panel
-  const erows = {};
-  for (const z of [...ZONES].sort((a, b) => a.id - b.id)) {
-    const row = document.createElement("div");
-    row.className = "erow";
-    row.innerHTML = `<div class="top"><div class="badge" style="background:${z.color}">${z.id}</div>
-      <input class="name" placeholder="Name"><span class="status">${z.name}</span></div>
-      <input class="notes" placeholder="e.g. A3 C4 E4" spellcheck="false" autocomplete="off"><div class="msg"></div>`;
-    $("erows").appendChild(row);
-    const name = row.querySelector(".name"), notes = row.querySelector(".notes"), msg = row.querySelector(".msg");
-    const update = () => {
-      custom.pads[z.id] = { name: name.value, notes: notes.value };
-      const p = parseNotes(notes.value);
-      msg.classList.toggle("err", !!p.error);
-      msg.textContent = p.error || (p.notes.length ? `${p.notes.length} note${p.notes.length > 1 ? "s" : ""} ✓` : "silent");
-      saveCustom(); rebuildCustom();
-    };
-    name.addEventListener("input", update);
-    notes.addEventListener("input", update);
-    notes.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); trigger(z.id, 0.85); } });
-    erows[z.id] = { name, notes, update };
+  let erows = {};
+  function buildEditor() {
+    $("erows").innerHTML = ""; erows = {};
+    for (const z of ZONES) {
+      const row = document.createElement("div");
+      row.className = "erow";
+      row.innerHTML = `<div class="top"><div class="badge" style="background:${z.color}">${z.id}</div>
+        <input class="name" placeholder="Name"><span class="status"></span></div>
+        <input class="notes" placeholder="e.g. A3 C4 E4" spellcheck="false" autocomplete="off"><div class="msg"></div>`;
+      row.querySelector(".status").textContent = z.name;
+      $("erows").appendChild(row);
+      const name = row.querySelector(".name"), notes = row.querySelector(".notes"), msg = row.querySelector(".msg");
+      const update = () => {
+        custom.pads[z.id] = { name: name.value, notes: notes.value };
+        const p = parseNotes(notes.value);
+        msg.classList.toggle("err", !!p.error);
+        msg.textContent = p.error || (p.notes.length ? `${p.notes.length} note${p.notes.length > 1 ? "s" : ""} ✓` : "silent");
+        saveCustom(); rebuildCustom(); if (kit === "custom") labelPads();
+      };
+      name.addEventListener("input", update);
+      notes.addEventListener("input", update);
+      notes.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); trigger(z.id, 0.85); } });
+      erows[z.id] = { name, notes, update };
+    }
   }
   function fillEditor() {
-    for (const id of [1, 2, 3, 4]) { erows[id].name.value = custom.pads[id].name; erows[id].notes.value = custom.pads[id].notes; erows[id].update(); }
+    for (const id of PAD_IDS) { erows[id].name.value = custom.pads[id].name; erows[id].notes.value = custom.pads[id].notes; erows[id].update(); }
     $("eVoice").value = custom.voice; $("eLen").value = custom.len; $("eStrum").value = String(custom.strum);
   }
-  fillEditor();
   for (const [id, key, num] of [["eVoice", "voice"], ["eLen", "len"], ["eStrum", "strum", true]])
     $(id).addEventListener("change", (e) => { custom[key] = num ? +e.target.value : e.target.value; saveCustom(); });
   $("editBtn").addEventListener("click", () => {
@@ -305,28 +387,30 @@
     if (!el) return;
     el.classList.add("hit");
     const r = document.createElement("div");
-    r.className = "ring"; r.style.borderColor = ZONES.find((z) => z.id === zone).color;
+    r.className = "ring"; r.style.borderColor = COLORS[zone];
     el.appendChild(r);
     setTimeout(() => r.remove(), 650);
     requestAnimationFrame(() => setTimeout(() => el.classList.remove("hit"), 60));
     hits++;
     $("count").textContent = `${hits} hit${hits === 1 ? "" : "s"}`;
-    $("last").textContent = `last: spot ${zone}` + (prob != null ? ` (${Math.round(prob * 100)}% sure)` : "");
+    $("last").textContent = `last: ${zone} · ${ZONES.find((z) => z.id === zone).name}` + (prob != null ? ` (${Math.round(prob * 100)}% sure)` : "");
   }
 
   function trigger(zone, vel = 0.8, prob = null) {
+    if (!pads[zone]) return; // a pad that isn't in use at this count
     show(zone, prob);
     timeline.push({ t: performance.now(), zone, vel });
     const v = Math.max(0.15, Math.min(1, vel));
     if (midiOut) return sendMidi(zone, v);
     if (!ctx) return;
+    if (ctx.state !== "running") ctx.resume().then(soundStatus); // the browser may pause audio (device change, sleep)
     KITS[kit][zone][1](v);
   }
 
   // ---------- MIDI out (Chrome / Edge) ----------
   function sendMidi(zone, v) {
     const { ch, notes } = MIDI_MAP[kit], velocity = Math.round(30 + 97 * v);
-    const isChord = kit === "chords" || kit === "custom";
+    const isChord = kit === "chords" || kit === "custom" || (kit === "pentatonic" && penta.style === "power");
     const gap = kit === "custom" ? custom.strum : 15, hold = kit === "custom" && custom.len === "stab" ? 200 : 900;
     notes[zone].forEach((n, i) => {
       const at = performance.now() + (isChord ? i * gap : 0); // little strum
@@ -379,6 +463,13 @@
   function dholSlap(v) { burst("bandpass", 2200, 2, 0.09, v, 0.9); tone("sine", 330, 260, 0.15, v, 0.4); }
   function tablaNa(v) { tone("sine", 620, 590, 0.5, v, 0.6); tone("sine", 1240, 1180, 0.25, v, 0.25); burst("bandpass", 3000, 3, 0.02, v, 0.4); }
   function shaker(v) { burst("bandpass", 6000, 1.5, 0.12, v, 0.45); }
+  function openHat(v) { burst("highpass", 7000, 0.7, 0.4, v, 0.45); }
+  function tom(f, v) { tone("sine", f * 1.6, f, 0.45, v, 1.0); burst("lowpass", 900, 0.7, 0.04, v, 0.3); }
+  function cowbell(v) { tone("square", 545, 545, 0.28, v, 0.16); tone("square", 815, 815, 0.28, v, 0.16); }
+  function tablaTin(v) { tone("sine", 880, 860, 0.4, v, 0.55); tone("sine", 1760, 1720, 0.15, v, 0.2); burst("bandpass", 4200, 3, 0.015, v, 0.35); }
+  function dholak(v) { tone("sine", 190, 115, 0.35, v, 1.0); burst("bandpass", 1500, 1.5, 0.05, v, 0.5); }
+  function ghungroo(v) { [0, 0.025, 0.05, 0.08].forEach((d) => burst("bandpass", 7500 + d * 20000, 4, 0.07, v, 0.4, d)); }
+  function tablaGe(v) { tone("sine", 75, 115, 0.7, v, 1.1); burst("lowpass", 300, 0.7, 0.05, v, 0.3); }
   function mallet(f, v) { tone("sine", f, f, 0.9, v, 0.7); tone("sine", f * 4, f * 4, 0.12, v, 0.15); }
   function pluck(f, v, delay) {
     const t = ctx.currentTime + delay, o = ctx.createOscillator(), lp = ctx.createBiquadFilter(), g = ctx.createGain();
@@ -418,38 +509,64 @@
     master.connect(comp).connect(ctx.destination);
     recDest = ctx.createMediaStreamDestination(); // a clean copy of the sound for recordings
     comp.connect(recDest);
+    ctx.onstatechange = soundStatus; // e.g. headphones plugged in, or the OS takes the audio device away
     $("gate").remove();
+    soundStatus(); chime();
+  });
+  // A short two-note chime, so you know sound is coming out before the phone is set up
+  function chime() { if (ctx) { mallet(523.25, 0.6); setTimeout(() => ctx && mallet(783.99, 0.6), 140); } }
+  function soundStatus() {
+    const b = $("sndBtn");
+    if (!ctx) { b.textContent = "🔊 Test sound"; return; }
+    const ok = ctx.state === "running";
+    b.textContent = ok ? "🔊 Test sound" : "🔇 Sound paused: click";
+    b.classList.toggle("rec", !ok);
+  }
+  $("sndBtn").addEventListener("click", async () => {
+    if (!ctx) return $("go").click();
+    await ctx.resume(); soundStatus(); chime();
   });
   let recDest = null;
 
-  document.addEventListener("keydown", (e) => { const z = +e.key; if (z >= 1 && z <= 4) trigger(z, 0.9); });
+  document.addEventListener("keydown", (e) => {
+    if (e.target.tagName === "INPUT") return; // typing in the chord editor
+    const z = +e.key; if (z >= 1 && z <= padCfg.count) trigger(z, 0.9);
+  });
 
   // ---------- explainer: what the phone heard and why it chose that pad ----------
-  const COLORS = Object.fromEntries(ZONES.map((z) => [z.id, z.color]));
-  const IDS = [1, 2, 3, 4];
+  const COLORS = Object.fromEntries(DeskPads.ALL.map((z) => [z.id, z.color]));
   let zoneFps = {}, lastFp = null, lastWave = null, matched = null;
   const timeline = [];
 
   function sizeCanvas(c) {
-    const dpr = window.devicePixelRatio || 1, w = c.clientWidth, h = +c.getAttribute("height");
-    if (c.width !== Math.round(w * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+    // The canvas's height in CSS px. Read the HTML height attribute only once: after a resize c.height (which IS that
+    // attribute) holds height x devicePixelRatio, and reading it again would grow the canvas on every redraw.
+    if (!c.dataset.h) c.dataset.h = c.getAttribute("height");
+    const dpr = window.devicePixelRatio || 1, w = c.clientWidth, h = +c.dataset.h;
+    c.style.height = h + "px";
+    if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
     const g = c.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
     return [g, w, h];
   }
   // fingerprint cards + confidence bars
-  const fpEls = {}, barEls = {};
-  for (const id of IDS) {
-    const card = document.createElement("div");
-    card.className = "fp"; card.style.color = COLORS[id];
-    card.innerHTML = `<div class="t"><b style="color:${COLORS[id]}">${id}</b><span class="nm"></span></div><canvas height="44"></canvas>`;
-    $("fps").appendChild(card); fpEls[id] = card;
-    const bar = document.createElement("div");
-    bar.className = "b";
-    bar.innerHTML = `<b style="color:${COLORS[id]}">${id}</b><div class="track"><div class="fill" style="background:${COLORS[id]}"></div></div><span class="pct">–</span>`;
-    $("bars").appendChild(bar); barEls[id] = bar;
+  let fpEls = {}, barEls = {};
+  function buildExplainer() {
+    $("fps").innerHTML = ""; $("bars").innerHTML = ""; fpEls = {}; barEls = {};
+    $("fps").style.setProperty("--fpCols", padCfg.count >= 8 ? 4 : padCfg.count >= 5 ? 3 : 2);
+    $("timeline").dataset.h = Math.max(96, 18 * padCfg.count); // sizeCanvas picks up the new height
+    for (const id of PAD_IDS) {
+      const card = document.createElement("div");
+      card.className = "fp"; card.style.color = COLORS[id];
+      card.innerHTML = `<div class="t"><b style="color:${COLORS[id]}">${id}</b><span class="nm"></span></div><canvas height="44"></canvas>`;
+      $("fps").appendChild(card); fpEls[id] = card;
+      const bar = document.createElement("div");
+      bar.className = "b";
+      bar.innerHTML = `<b style="color:${COLORS[id]}">${id}</b><div class="track"><div class="fill" style="background:${COLORS[id]}"></div></div><span class="pct">–</span>`;
+      $("bars").appendChild(bar); barEls[id] = bar;
+    }
   }
   function drawFps() {
-    for (const id of IDS) {
+    for (const id of PAD_IDS) {
       const card = fpEls[id], [g, w, h] = sizeCanvas(card.querySelector("canvas"));
       card.querySelector(".nm").textContent = KITS[kit][id][0];
       card.classList.toggle("match", matched === id);
@@ -478,7 +595,7 @@
     lastWave.forEach((v, i) => { const a = v * (h / 2 - 3); g.fillRect(i * bw + 0.5, h / 2 - a, Math.max(1, bw - 1), a * 2 || 1); });
   }
   function drawBars(probs) {
-    for (const id of IDS) {
+    for (const id of PAD_IDS) {
       const p = probs ? probs[id] || 0 : 0;
       barEls[id].querySelector(".fill").style.width = `${Math.round(p * 100)}%`;
       barEls[id].querySelector(".pct").textContent = probs ? `${Math.round(p * 100)}%` : "–";
@@ -487,7 +604,7 @@
   function drawTimeline() {
     const c = $("timeline"), [g, w, h] = sizeCanvas(c), now = performance.now(), span = 8000;
     g.clearRect(0, 0, w, h);
-    const rowH = h / 4, order = [1, 2, 3, 4];
+    const rowH = h / PAD_IDS.length, order = PAD_IDS;
     order.forEach((id, r) => {
       g.fillStyle = r % 2 ? "rgba(255,255,255,.02)" : "rgba(255,255,255,.04)";
       g.fillRect(0, r * rowH, w, rowH);
@@ -495,6 +612,7 @@
     });
     while (timeline.length && now - timeline[0].t > span) timeline.shift();
     for (const ev of timeline) {
+      if (!order.includes(ev.zone)) continue;
       const x = 22 + (w - 30) * (1 - (now - ev.t) / span), r = order.indexOf(ev.zone);
       const fresh = Math.max(0, 1 - (now - ev.t) / 400);
       g.fillStyle = COLORS[ev.zone];
@@ -502,8 +620,17 @@
     }
     requestAnimationFrame(drawTimeline);
   }
+  // Rebuild everything that depends on the pad count / names
+  function applyPads(cfg) {
+    padCfg = DeskPads.normalize(cfg); ZONES = DeskPads.active(padCfg); PAD_IDS = ZONES.map((z) => z.id);
+    rebuildMelody(); rebuildPenta(); rebuildCustom();
+    buildTable(); buildEditor(); fillEditor(); buildExplainer();
+    labelPads(); drawFps(); drawWave(); drawBars(null);
+    $("keysHint").textContent = `Keys 1–${padCfg.count} play the pads without the phone.`;
+  }
+  applyPads(padCfg);
+  fetch("/pads", { cache: "no-store" }).then((r) => r.json()).then((cfg) => { if (cfg && cfg.count) applyPads(cfg); }).catch(() => {});
   requestAnimationFrame(drawTimeline);
-  drawFps(); drawWave(); drawBars(null);
   $("kit").addEventListener("change", drawFps);
   window.addEventListener("resize", () => { drawFps(); drawWave(); });
 
@@ -524,7 +651,7 @@
       camStream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 }, audio: false });
       $("cam").srcObject = camStream; $("camCard").classList.remove("hidden"); $("camBtn").textContent = "Camera: on";
       $("main").classList.remove("noexplain"); $("explainBtn").textContent = "Hide explainer";
-    } catch (e) { alert("Camera not available: " + e.message + "\n(If your meeting app is using the camera, people can already see you there.)"); }
+    } catch (e) { alert("Camera not available: " + e.message + "\n(If a video-call app is using the camera, people can already see you there.)"); }
   });
   $("mirror").addEventListener("change", (e) => $("camCard").classList.toggle("nomirror", !e.target.checked));
   $("explainBtn").addEventListener("click", () => {
@@ -567,7 +694,10 @@
     es.onopen = () => { $("conn").classList.add("on"); $("connText").textContent = "server connected · waiting for phone"; };
     es.onmessage = (e) => {
       const m = JSON.parse(e.data);
+      if (m.type === "pads") applyPads(m);
+      if (m.type === "check") $("trained").textContent = `Check round (prompted, not learned): ${m.ok} of ${m.n} right on ${m.pads} pads.` + (m.misses ? ` Missed: ${m.misses}` : "");
       if (m.type === "ready") {
+        if (m.pads && (m.pads.count !== padCfg.count || JSON.stringify(m.pads.names) !== JSON.stringify(padCfg.names))) applyPads(m.pads);
         $("connText").textContent = "phone is playing";
         zoneFps = m.fingerprints || {};
         $("join").classList.add("hidden");

@@ -25,8 +25,16 @@
 ```
 python3 server.py                     # laptop http://localhost:8000, phone https://<ip>:8443 (QR on the laptop page)
 node tests/test_core.js               # offline core test
-NODE_PATH=$(npm root -g) node tools/browser-tests/e2e_demo.js <fake-mic.wav> <out-dir>   # with server running
+node tools/browser-tests/pads_e2e.js [out-dir]     # fake-mic phone + laptop, 4/5/6/8 pads (starts its own server)
+node tools/browser-tests/pentatonic.js [out-dir]   # every Pentatonic combination at every pad count
+node tools/analysis/read_log.js data/training/log-<date>.jsonl   # what happened in a live session
 ```
 
-## Next up
-Publish to GitHub, then generalise from 4 to N pads (6–8, using the laptop and monitor as pads), then README Phase 1. See HANDOFF.txt §8.
+## Status
+Desk Band is **parked at v0.3** (README "New in v0.3"). The repo is next used for other phone-sensor instruments.
+If Desk Band is picked up again: README Phase 2 (quick recalibrate) is next, and a full Check round is still
+needed for a measured accuracy number on 5 pads.
+
+## Keep it personal
+This is a personal project. No names of other people or organisations in files or commit messages.
+Private notes (`HANDOFF.txt`, `QUICK_WINS.md`) stay local and gitignored.

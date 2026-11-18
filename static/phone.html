@@ -23,13 +23,14 @@
   .meter i { position:absolute; left:0; top:0; bottom:0; background:var(--ok); width:0; transition:width .05s; }
   .meter b { position:absolute; top:-2px; bottom:-2px; width:2px; background:var(--warn); }
   .grid { position:relative; display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:12px 0; }
-  .pad { position:relative; height:104px; border-radius:16px; border:2px solid var(--line); background:#13151b;
+  .grid.many .pad { height:80px; }
+  .pad { position:relative; height:104px; text-align:center; padding:0 6px; border-radius:16px; border:2px solid var(--line); background:#13151b;
          display:flex; flex-direction:column; justify-content:center; align-items:center; transition:transform .08s, background .25s; }
   .pad .n { font-size:26px; font-weight:800; }
   .pad .c { font-size:12px; color:var(--dim); }
   .pad.training { border-style:dashed; }
   .pad.flash { transform:scale(1.04); }
-  .phone { position:absolute; left:50%; top:50%; width:34px; height:58px; margin:-29px 0 0 -17px; border:2px solid var(--dim);
+  .phone { position:absolute; left:50%; top:var(--phoneTop, 50%); width:34px; height:58px; margin:-29px 0 0 -17px; border:2px solid var(--dim);
            border-radius:8px; background:var(--bg); pointer-events:none; z-index:1; }
   .phone:after { content:""; position:absolute; top:4px; left:50%; width:10px; height:3px; margin-left:-5px; background:var(--dim); border-radius:2px; }
   label { color:var(--dim); font-size:13px; }
@@ -41,6 +42,12 @@
   .prompt .where { font-size:15px; color:var(--dim); margin-top:4px; }
   .hidden { display:none !important; }
   .setting { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:10px; }
+  details { margin-top:10px; }
+  summary { color:var(--dim); font-size:13px; padding:4px 0; }
+  .nameRow { display:flex; gap:8px; align-items:center; margin-top:6px; }
+  .nameRow b { width:26px; height:26px; border-radius:8px; display:flex; align-items:center; justify-content:center; color:#14151a; flex:none; }
+  .nameRow input { flex:1; font:inherit; color:var(--ink); background:#0a0b0e; border:1px solid var(--line); border-radius:8px; padding:8px 10px; user-select:text; -webkit-user-select:text; }
+  .result { font-size:15px; font-weight:600; margin-top:8px; }
 </style>
 </head>
 <body>
@@ -56,6 +63,8 @@
 <div id="main" class="hidden">
   <div class="card">
     <div class="status" id="info">…</div>
+    <div class="status hidden" id="micBad" style="color:#ffc23d;margin-top:6px"></div>
+    <button id="micWarn" class="primary hidden" style="width:100%;margin:8px 0">Mic paused: tap to turn it back on</button>
     <div class="meter"><i id="lvl"></i><b id="thr"></b></div>
     <label>Sensitivity <span id="sensVal"></span></label>
     <input id="sens" type="range" min="3" max="12" step="0.5" value="5">
@@ -67,6 +76,11 @@
         <option value="70">Accurate (~85 ms)</option>
       </select>
     </div>
+    <div class="setting">
+      <label for="padCount">Pads</label>
+      <select id="padCount"><option value="4">4 pads</option><option value="5">5 pads</option><option value="6">6 pads</option><option value="8">8 pads</option></select>
+    </div>
+    <details id="namesBox"><summary>Pad names: say where each pad is (e.g. laptop lid, book)</summary><div id="names"></div></details>
     <label style="display:flex;gap:8px;align-items:center;margin-top:10px">
       <input id="echo" type="checkbox"> Anti-echo (only if the laptop's speakers sit on this table; slows fast playing)
     </label>
@@ -77,14 +91,22 @@
     <div class="status" id="hint"></div>
     <div id="promptBox" class="prompt hidden"><div class="num" id="promptNum">1</div><div class="where" id="promptWhere"></div></div>
     <div class="grid" id="grid"><div class="phone"></div></div>
+    <div class="setting" id="perPadRow">
+      <label for="perPad">Knocks per pad when teaching</label>
+      <select id="perPad"><option value="10">10</option><option value="15">15</option></select>
+    </div>
     <div class="row">
-      <button id="guided" class="primary">Teach all spots (≈1 min)</button>
+      <button id="guided" class="primary">Teach all spots</button>
     </div>
     <div class="row">
       <button id="play" disabled>Play</button>
       <button id="stop" class="hidden">Stop</button>
     </div>
+    <div class="row">
+      <button id="check" class="hidden">Check accuracy (2 knocks per pad)</button>
+    </div>
     <div class="status" id="acc"></div>
+    <div class="result" id="checkResult"></div>
   </div>
 
   <div class="row">
@@ -96,41 +118,51 @@
 </div>
 
 <script src="core.js"></script>
+<script src="pads.js"></script>
 <script>
 (() => {
   "use strict";
-  const ZONES = [
-    { id: 1, name: "Top left",     color: "#ff6b5a" },
-    { id: 2, name: "Top right",    color: "#ffc23d" },
-    { id: 4, name: "Bottom left",  color: "#5aa8ff" },
-    { id: 3, name: "Bottom right", color: "#3dd6a3" },
-  ]; // grid order, row by row
-  const GUIDED_PER_ZONE = 15, TOPUP = 8, MIN_TO_PLAY = 6;
+  // Pad count + names come from the laptop (/pads); a local copy makes the page usable before it answers.
+  const PADS_LOCAL = "deskband.pads";
+  let padCfg = DeskPads.normalize((() => { try { return JSON.parse(localStorage.getItem(PADS_LOCAL)); } catch { return null; } })());
+  let ZONES = DeskPads.active(padCfg);
+  const TOPUP = 8, MIN_TO_PLAY = 6, CHECK_PER_ZONE = 2;
   const $ = (id) => document.getElementById(id);
   const zinfo = (id) => ZONES.find((z) => z.id === id);
+  const perZone = () => +$("perPad").value;
 
   let det = null, ctx = null, model = null;
-  let mode = "idle";            // idle | guided | topup | play
+  let mode = "idle";            // idle | guided | topup | play | check
+  let checkLog = [], lastCheck = null; // prompted check round: [{want, got}]; never added to training
   let topupZone = null, queue = [], lastHit = null;
   const motion = [];
   let motionOK = false;
 
-  // Training taps depend on how long we listen, so they're stored per Response setting.
-  const storeKey = () => `deskband.v2.${$("resp").value}`;
+  // Training taps depend on the pad count and on how long we listen, so they're stored per (count, Response).
+  const storeKey = () => `deskband.v3.${padCfg.count}p.${$("resp").value}`;
   let samples = load();
-  function load() { try { return JSON.parse(localStorage.getItem(storeKey())) || []; } catch { return []; } }
+  function load() {
+    try {
+      const s = JSON.parse(localStorage.getItem(storeKey()));
+      if (s) return s;
+      // taps saved before pad counts existed (deskband.v2.<ms>) were 4-pad taps
+      const old = padCfg.count === 4 && JSON.parse(localStorage.getItem(`deskband.v2.${$("resp").value}`));
+      if (Array.isArray(old) && old.length) { localStorage.setItem(storeKey(), JSON.stringify(old)); return old; }
+    } catch {}
+    return [];
+  }
   let syncTimer = null;
   function save() {
     try { localStorage.setItem(storeKey(), JSON.stringify(samples)); } catch {}
     // also keep a copy on the laptop, so a fresh phone page is ready to play instantly
     clearTimeout(syncTimer);
-    const resp = $("resp").value, body = JSON.stringify(samples);
-    syncTimer = setTimeout(() => fetch(`/samples?resp=${resp}`, { method: "POST", headers: { "Content-Type": "application/json" }, body }).catch(() => {}), 600);
+    const url = `/samples?resp=${$("resp").value}&pads=${padCfg.count}`, body = JSON.stringify(samples);
+    syncTimer = setTimeout(() => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body }).catch(() => {}), 600);
   }
   async function loadFromLaptop() {
     if (samples.length) return;
     try {
-      const r = await fetch(`/samples?resp=${$("resp").value}`, { cache: "no-store" });
+      const r = await fetch(`/samples?resp=${$("resp").value}&pads=${padCfg.count}`, { cache: "no-store" });
       const data = r.ok ? await r.json() : [];
       if (Array.isArray(data) && data.length) {
         samples = data;
@@ -143,20 +175,72 @@
   const ready = () => ZONES.every((z) => count(z.id) >= MIN_TO_PLAY);
 
   // ---------- pads ----------
-  const padEls = {};
-  for (const z of ZONES) {
-    const el = document.createElement("div");
-    el.className = "pad";
-    el.innerHTML = `<div class="n">${z.id}</div><div>${z.name}</div><div class="c"></div>`;
-    el.style.borderColor = z.color;
-    el.addEventListener("click", () => padClicked(z.id));
-    $("grid").appendChild(el);
-    padEls[z.id] = el;
+  let padEls = {};
+  function buildGrid() {
+    const grid = $("grid"), lay = DeskPads.layout(padCfg.count, "tall");
+    grid.querySelectorAll(".pad").forEach((e) => e.remove());
+    grid.style.gridTemplateAreas = lay.areas;
+    grid.classList.toggle("many", lay.rows > 2);
+    grid.style.setProperty("--phoneTop", `${100 / lay.rows}%`); // the phone sits between pads 1–4
+    padEls = {};
+    for (const z of ZONES) {
+      const el = document.createElement("div");
+      el.className = "pad"; el.style.gridArea = `p${z.id}`; el.style.borderColor = z.color;
+      el.innerHTML = `<div class="n">${z.id}</div><div class="nm"></div><div class="c"></div>`;
+      el.querySelector(".nm").textContent = z.name;
+      el.addEventListener("click", () => padClicked(z.id));
+      grid.appendChild(el);
+      padEls[z.id] = el;
+    }
   }
+  function buildNames() {
+    const box = $("names"); box.innerHTML = "";
+    for (const z of ZONES) {
+      const row = document.createElement("div");
+      row.className = "nameRow";
+      row.innerHTML = `<b style="background:${z.color}">${z.id}</b><input maxlength="24" autocomplete="off">`;
+      const inp = row.querySelector("input");
+      inp.value = z.name;
+      inp.addEventListener("input", () => {
+        padCfg.names[z.id] = inp.value; z.name = inp.value.trim() || DeskPads.ALL[z.id - 1].name;
+        padEls[z.id].querySelector(".nm").textContent = z.name;
+        savePads();
+      });
+      box.appendChild(row);
+    }
+  }
+  let padsTimer = null;
+  function savePads() {
+    try { localStorage.setItem(PADS_LOCAL, JSON.stringify(padCfg)); } catch {}
+    clearTimeout(padsTimer); // the laptop keeps the real copy and tells the stage page
+    padsTimer = setTimeout(() => fetch("/pads", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(DeskPads.normalize(padCfg)) }).catch(() => {}), 400);
+  }
+  // Switch to another pad count (or adopt the laptop's config): its own training taps, model and grid.
+  function applyPads(cfg) {
+    const countChanged = cfg.count !== padCfg.count;
+    padCfg = DeskPads.normalize(cfg); ZONES = DeskPads.active(padCfg);
+    $("padCount").value = String(padCfg.count);
+    buildGrid(); buildNames();
+    if (!countChanged) return refresh();
+    $("perPad").value = padCfg.count <= 5 ? "15" : "10";
+    samples = load(); model = null; mode = "idle"; queue = []; lastCheck = null;
+    $("acc").textContent = ""; $("checkResult").textContent = "";
+    loadFromLaptop().then(() => { if (ready()) trainModel(); refresh(); });
+    refresh();
+  }
+  $("padCount").addEventListener("change", (e) => { applyPads({ ...padCfg, count: +e.target.value }); savePads(); });
+  $("perPad").addEventListener("change", () => refresh());
+  $("padCount").value = String(padCfg.count);
+  $("perPad").value = padCfg.count <= 5 ? "15" : "10";
+  buildGrid(); buildNames();
+  fetch("/pads", { cache: "no-store" }).then((r) => r.json()).then((cfg) => {
+    if (cfg && cfg.count) { applyPads(cfg); try { localStorage.setItem(PADS_LOCAL, JSON.stringify(padCfg)); } catch {} }
+  }).catch(() => {});
 
   function padClicked(id) {
     if (mode === "play") return correctLast(id);
-    if (mode === "guided") return;
+    if (mode === "guided" || mode === "check") return;
     mode = "topup"; topupZone = id; topupTarget = count(id) + TOPUP; refresh();
   }
   let topupTarget = 0;
@@ -167,17 +251,23 @@
       el.querySelector(".c").textContent = mode === "play" ? "" : `${count(z.id)} taps`;
       el.classList.toggle("training", mode === "topup" && topupZone === z.id);
     }
-    $("promptBox").classList.toggle("hidden", mode !== "guided");
-    $("guided").classList.toggle("hidden", mode === "play" || mode === "guided");
+    const prompting = mode === "guided" || mode === "check";
+    $("promptBox").classList.toggle("hidden", !prompting);
+    $("guided").classList.toggle("hidden", mode !== "idle" && mode !== "topup");
+    $("guided").textContent = `Teach all spots (${ZONES.length * perZone()} knocks)`;
+    $("perPadRow").classList.toggle("hidden", mode !== "idle");
+    $("check").classList.toggle("hidden", mode !== "idle" || !ready());
+    $("padCount").disabled = mode !== "idle";
     $("play").disabled = !ready();
     $("play").classList.toggle("hidden", mode === "play");
     $("play").classList.toggle("primary", ready());
-    $("stop").classList.toggle("hidden", mode !== "play" && mode !== "guided" && mode !== "topup");
-    $("stop").textContent = mode === "play" ? "Stop playing" : "Stop teaching";
-    if (mode === "guided") {
+    $("stop").classList.toggle("hidden", mode === "idle");
+    $("stop").textContent = mode === "play" ? "Stop playing" : mode === "check" ? "Stop checking" : "Stop teaching";
+    if (prompting) {
       const z = zinfo(queue[0]);
-      $("modeText").textContent = `Teaching · ${queue.length} knocks left`;
-      $("hint").textContent = "Knock the spot shown. Mix soft and hard knocks — like you'd really play.";
+      $("modeText").textContent = mode === "guided" ? `Teaching · ${queue.length} knocks left` : `Checking · ${queue.length} knocks left`;
+      $("hint").textContent = mode === "guided" ? "Knock the spot shown. Mix soft and hard knocks — like you'd really play."
+        : "Knock the spot shown, the way you'd play. These knocks only score the model; they aren't learned.";
       $("promptNum").textContent = z.id; $("promptNum").style.color = z.color; $("promptWhere").textContent = z.name;
     } else if (mode === "topup") {
       $("modeText").textContent = `Adding taps to spot ${topupZone}`;
@@ -219,19 +309,10 @@
         motion.push({ t: now, x: a.x, y: a.y, z: a.z });
         while (motion.length && motion[0].t < now - 2000) motion.shift();
       });
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 },
-      });
-      ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: "interactive" });
-      await ctx.resume();
-      const src = ctx.createMediaStreamSource(stream);
-      const proc = ctx.createScriptProcessor(256, 1, 1); // small blocks = less waiting
-      makeDetector();
-      proc.onaudioprocess = (ev) => det.process(ev.inputBuffer.getChannelData(0), performance.now(), onHit);
-      src.connect(proc); proc.connect(ctx.destination); // output stays silent
+      await startAudio();
       try { if ("wakeLock" in navigator) await navigator.wakeLock.request("screen"); } catch {}
       $("intro").classList.add("hidden"); $("main").classList.remove("hidden");
-      $("info").textContent = `Mic ${(ctx.sampleRate / 1000).toFixed(1)} kHz · motion ${motionOK ? "on" : "off (mic only)"}`;
+      $("info").textContent = `${micLabel} · ${(ctx.sampleRate / 1000).toFixed(1)} kHz · motion ${motionOK ? "on" : "off (mic only)"}`;
       setInterval(drawMeter, 50);
       await loadFromLaptop();
       if (ready()) trainModel();
@@ -241,7 +322,67 @@
     }
   });
 
+  // ---------- microphone pipeline ----------
+  // Kept in `mic` on purpose: WebKit (every iPhone browser) can garbage-collect a ScriptProcessorNode nothing refers
+  // to, and the mic then goes silent. A big clean-up such as "Reset all" made that happen.
+  let mic = null, lastAudioMs = 0, fixing = false, micLabel = "";
+  const HEADSET = /airpods|bluetooth|headset|headphone|buds|hands-?free|beats|wh-|wf-|bose|jabra/i;
+  async function startAudio() {
+    const AUDIO = { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 };
+    let stream = await navigator.mediaDevices.getUserMedia({ audio: AUDIO });
+    // Bluetooth earbuds paired with the phone take over its mic: then it hears knocks through the air, not the table.
+    if (HEADSET.test(stream.getAudioTracks()[0].label)) {
+      try {
+        const own = (await navigator.mediaDevices.enumerateDevices())
+          .find((d) => d.kind === "audioinput" && d.label && !HEADSET.test(d.label));
+        if (own) {
+          const s2 = await navigator.mediaDevices.getUserMedia({ audio: { ...AUDIO, deviceId: { exact: own.deviceId } } });
+          stream.getTracks().forEach((t) => t.stop()); stream = s2;
+        }
+      } catch {}
+    }
+    micLabel = stream.getAudioTracks()[0].label || "unknown mic";
+    const onHeadset = HEADSET.test(micLabel);
+    $("micBad").classList.toggle("hidden", !onHeadset);
+    $("micBad").textContent = onHeadset ? `Listening through “${micLabel}”. Desk Band needs the phone's own mic: disconnect headphones from this phone (plug them into the laptop), then reload.` : "";
+    log({ kind: "mic", label: micLabel, headset: onHeadset });
+    const c = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: "interactive" });
+    await c.resume();
+    const src = c.createMediaStreamSource(stream);
+    const proc = c.createScriptProcessor(256, 1, 1); // small blocks = less waiting
+    ctx = c; makeDetector();
+    proc.onaudioprocess = (ev) => { lastAudioMs = performance.now(); det.process(ev.inputBuffer.getChannelData(0), performance.now(), onHit); };
+    src.connect(proc); proc.connect(c.destination); // output stays silent
+    c.onstatechange = micHealth;
+    mic = { stream, src, proc };
+    lastAudioMs = performance.now();
+  }
+  const micOK = () => !!mic && ctx.state === "running" && performance.now() - lastAudioMs < 1000 &&
+    mic.stream.getAudioTracks().every((t) => t.readyState === "live");
+  function micHealth() {
+    const bad = !!mic && !micOK();
+    $("micWarn").classList.toggle("hidden", !bad);
+    if (bad && ctx.state === "suspended" && !fixing) ctx.resume().catch(() => {}); // works without a tap on most browsers
+  }
+  // From a tap (iOS only lets audio restart after a tap): resume, and if the mic is still silent, set it up again.
+  async function fixMic() {
+    if (fixing || !mic || micOK()) return;
+    fixing = true;
+    try {
+      await ctx.resume();
+      await new Promise((r) => setTimeout(r, 400));
+      if (!micOK()) {
+        mic.stream.getTracks().forEach((t) => t.stop());
+        try { await ctx.close(); } catch {}
+        await startAudio();
+      }
+    } catch (err) { $("info").textContent = "Mic could not restart: " + err.message + ". Reload the page."; }
+    finally { fixing = false; micHealth(); }
+  }
+  document.addEventListener("click", fixMic, true);
+
   function drawMeter() {
+    micHealth();
     if (!det) return;
     const toPct = (v) => Math.max(0, Math.min(100, (Math.log10(v + 1e-6) + 4) / 4 * 100));
     $("lvl").style.width = toPct(det.level) + "%";
@@ -260,23 +401,42 @@
   });
 
   // ---------- each detected knock ----------
+  // While teaching or checking, one knock must give one label. A knock that rattles (a laptop lid, a loose object) can
+  // trigger twice; the echo would take the NEXT prompt's label and shift every later label by one. Nobody can see a
+  // new prompt and knock within 250 ms, so a second detection that soon is ignored (and logged).
+  const LABEL_GAP_MS = 250;
+  let lastLabelMs = -1e9;
   function onHit(h) {
     if (mode === "idle") return;
     const f = DeskCore.audioFeatures(h.seg, det.sr).concat(DeskCore.accelFeatures(motion, h.wallMs, 40, +$("resp").value));
     const vel = Math.max(0.15, Math.min(1, Math.log10(h.peakAmp / h.thr + 1) / 1.3));
+    const amp = +(h.peakAmp / h.thr).toFixed(2);
+    if (mode === "guided" || mode === "check" || mode === "topup") {
+      if (h.wallMs - lastLabelMs < LABEL_GAP_MS) return log({ kind: "double", mode, gapMs: Math.round(h.wallMs - lastLabelMs), amp });
+      lastLabelMs = h.wallMs;
+    }
     if (mode === "guided") {
       const zone = queue.shift();
-      samples.push({ zone, f }); save(); flash(zone, true);
+      samples.push({ zone, f, t: Date.now(), session: SESSION }); save(); flash(zone, true);
+      log({ kind: "train", label: zone, amp, f: r3(f) });
       if (!queue.length) { mode = "idle"; trainModel(); }
       refresh();
+    } else if (mode === "check" && model) {
+      const want = queue.shift(), p = model.predict(f), got = p.zone;
+      checkLog.push({ want, got }); flash(got, got === want);
+      log({ kind: "check", label: want, got, prob: +p.prob.toFixed(3), amp, f: r3(f) });
+      if (!queue.length) finishCheck();
+      refresh();
     } else if (mode === "topup") {
-      samples.push({ zone: topupZone, f }); save(); flash(topupZone, true);
+      samples.push({ zone: topupZone, f, t: Date.now(), session: SESSION }); save(); flash(topupZone, true);
+      log({ kind: "train", label: topupZone, topup: true, amp, f: r3(f) });
       if (count(topupZone) >= topupTarget) { mode = "idle"; topupZone = null; if (ready()) trainModel(); }
       refresh();
     } else if (mode === "play" && model) {
       const p = model.predict(f);
       lastHit = { f, zone: p.zone };
       flash(p.zone, p.prob >= 0.5);
+      log({ kind: "play", got: p.zone, prob: +p.prob.toFixed(3), amp, f: r3(f) });
       const delay = Math.round(performance.now() - h.wallMs);
       const probs = {};
       model.classes.forEach((c, i) => (probs[c] = +p.probs[i].toFixed(3)));
@@ -288,19 +448,38 @@
 
   function correctLast(id) {
     if (!lastHit) return;
-    samples.push({ zone: id, f: lastHit.f }); save();
+    samples.push({ zone: id, f: lastHit.f, t: Date.now(), session: SESSION, fix: true }); save();
     const was = lastHit.zone; lastHit = null;
+    log({ kind: "correct", label: id, was });
     model = new DeskCore.Model().fit(samples.map((s) => s.f), samples.map((s) => s.zone), { iters: 300 });
     $("acc").textContent = `Learned: that knock was ${id}${was !== id ? ` (it guessed ${was})` : ""}. ${samples.length} taps total.`;
   }
 
-  function shuffledQueue() {
+  function shuffledQueue(per) {
     const q = [];
-    for (const z of ZONES) for (let i = 0; i < GUIDED_PER_ZONE; i++) q.push(z.id);
+    for (const z of ZONES) for (let i = 0; i < per; i++) q.push(z.id);
     for (let i = q.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [q[i], q[j]] = [q[j], q[i]]; }
     return q;
   }
-  $("guided").addEventListener("click", () => { queue = shuffledQueue(); mode = "guided"; refresh(); });
+  $("guided").addEventListener("click", () => { queue = shuffledQueue(perZone()); mode = "guided"; refresh(); });
+
+  // ---------- check accuracy: a separate, prompted round scored against the current model ----------
+  $("check").addEventListener("click", () => {
+    if (!model) trainModel();
+    queue = shuffledQueue(CHECK_PER_ZONE); checkLog = []; mode = "check";
+    $("checkResult").textContent = ""; refresh();
+  });
+  function finishCheck() {
+    mode = "idle";
+    const ok = checkLog.filter((c) => c.want === c.got).length, n = checkLog.length;
+    const wrong = {};
+    for (const c of checkLog) if (c.want !== c.got) wrong[`${c.want}→${c.got}`] = (wrong[`${c.want}→${c.got}`] || 0) + 1;
+    const misses = Object.entries(wrong).map(([k, v]) => (v > 1 ? `${k} ×${v}` : k)).join(", ");
+    const before = lastCheck ? ` (last check: ${lastCheck.ok} of ${lastCheck.n})` : "";
+    $("checkResult").textContent = `Check: ${ok} of ${n} right${before}` + (misses ? `. Missed: ${misses}` : ". No misses.");
+    lastCheck = { ok, n, wrong, when: Date.now() };
+    send({ type: "check", ok, n, pads: padCfg.count, misses });
+  }
 
   // ---------- model ----------
   function trainModel() {
@@ -315,7 +494,7 @@
         for (const i of test) { ok += m.predict(samples[i].f).zone === samples[i].zone; n++; }
       }
       const a = Math.round((100 * ok) / n);
-      $("acc").textContent = `Estimated accuracy: ${a}% (random guessing = 25%).` +
+      $("acc").textContent = `Estimated accuracy: ${a}% (same-session guess; random = ${Math.round(100 / ZONES.length)}%). Use Check accuracy for the real number.` +
         (a < 70 ? " Tip: spread the spots further apart, or knock different objects (a book, a box, the bare table)." : "");
     }, 30);
   }
@@ -344,20 +523,42 @@
   $("play").addEventListener("click", () => {
     if (!model) trainModel();
     mode = "play"; refresh();
-    send({ type: "ready", fingerprints: fingerprints(), taps: samples.length, acc: $("acc").textContent });
+    send({ type: "ready", fingerprints: fingerprints(), taps: samples.length, acc: $("acc").textContent, pads: padCfg });
   });
-  $("stop").addEventListener("click", () => { mode = "idle"; queue = []; topupZone = null; if (ready()) trainModel(); refresh(); });
-  $("undo").addEventListener("click", () => { samples.pop(); save(); if (mode === "guided") mode = "idle"; refresh(); });
+  $("stop").addEventListener("click", () => { mode = "idle"; queue = []; checkLog = []; topupZone = null; if (ready()) trainModel(); refresh(); });
+  $("undo").addEventListener("click", () => { if (mode === "check") return; samples.pop(); save(); if (mode === "guided") mode = "idle"; refresh(); });
+  // Two taps instead of confirm(): a native pop-up can pause the mic on iPhones.
+  let resetArmed = 0;
   $("reset").addEventListener("click", () => {
-    if (!confirm("Delete all training taps for this Response setting?")) return;
-    samples = []; model = null; save(); mode = "idle"; $("acc").textContent = ""; refresh();
+    if (performance.now() - resetArmed > 3000) {
+      resetArmed = performance.now();
+      $("reset").textContent = `Tap again to delete the ${padCfg.count}-pad taps`;
+      setTimeout(() => { if (performance.now() - resetArmed >= 2900) $("reset").textContent = "Reset all"; }, 3000);
+      return;
+    }
+    resetArmed = 0; $("reset").textContent = "Reset all";
+    log({ kind: "reset", deleted: samples.length }); // the deleted taps are still in the laptop's log
+    samples = []; model = null; save(); mode = "idle"; $("acc").textContent = ""; $("checkResult").textContent = ""; refresh();
   });
   $("export").addEventListener("click", () => {
-    const blob = new Blob([JSON.stringify({ when: new Date().toISOString(), responseMs: +$("resp").value, samples }, null, 1)],
+    const blob = new Blob([JSON.stringify({ when: new Date().toISOString(), responseMs: +$("resp").value, pads: padCfg, samples }, null, 1)],
       { type: "application/json" });
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob); a.download = "deskband-taps.json"; a.click();
+    a.href = URL.createObjectURL(blob); a.download = `deskband-taps-${padCfg.count}p.json`; a.click();
   });
+
+  // ---------- session log: every knock (training, check, play), kept on the laptop for later analysis ----------
+  const SESSION = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const r3 = (f) => f.map((v) => +v.toFixed(3));
+  let logBuf = [], logTimer = null;
+  function log(ev) {
+    logBuf.push({ t: Date.now(), session: SESSION, pads: padCfg.count, resp: +$("resp").value, mode, ...ev });
+    clearTimeout(logTimer);
+    logTimer = setTimeout(() => {
+      const body = JSON.stringify(logBuf); logBuf = [];
+      fetch("/log", { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: true }).catch(() => {});
+    }, 800);
+  }
 
   // ---------- network ----------
   let sent = 0, failed = 0;

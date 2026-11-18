@@ -1,7 +1,7 @@
 // Offline sanity test for static/core.js — synthetic knocks, no phone needed.
 // Run: node tests/test_core.js
 const C = require("../static/core.js");
-const sr = 48000, freqs = { 1: 600, 2: 1500, 3: 3200, 4: 5500 }; // each "spot" rings differently
+const sr = 48000, freqs = { 1: 600, 2: 1500, 3: 3200, 4: 5500, 5: 900, 6: 2300, 7: 4300, 8: 7000 }; // each "spot" rings differently
 let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
 function session(order, perZone) {
   const labels = [], sig = new Float32Array(sr * (order.length * perZone * 0.4 + 1));
@@ -45,4 +45,15 @@ console.log("PASS");
   console.log(`rapid-fire: caught ${got}/${n} knocks at ${Math.round(1 / gap)} per second`);
   if (got !== n) { console.error("FAIL rapid-fire"); process.exit(1); }
   console.log("PASS rapid-fire");
+}
+
+// More pads: the same pipeline with 5, 6 and 8 classes (10 taps per pad, as the phone offers), train/test recorded separately.
+for (const K of [5, 6, 8]) {
+  const ids = Array.from({ length: K }, (_, i) => i + 1), shuffled = [...ids].sort(() => rnd() - 0.5);
+  const tr = extract(session(ids, 10)), te = extract(session(shuffled, 10));
+  const mk = new C.Model().fit(tr.map((r) => r.f), tr.map((r) => r.zone));
+  const a = te.filter((r) => mk.predict(r.f).zone === r.zone).length / te.length;
+  console.log(`${K} pads: detected ${tr.length}/${K * 10} train, ${te.length}/${K * 10} test taps; accuracy ${(a * 100).toFixed(0)}%`);
+  if (tr.length < K * 10 - 2 || te.length < K * 10 - 2 || a < 0.9 || mk.classes.length !== K) { console.error(`FAIL ${K} pads`); process.exit(1); }
+  console.log(`PASS ${K} pads`);
 }

@@ -17,18 +17,36 @@ import ssl
 import subprocess
 import sys
 import threading
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATIC = os.path.join(HERE, "static")
 CERTS = os.path.join(HERE, ".certs")
-DATA = os.path.join(HERE, "data", "training")
+DATA = os.environ.get("DESKBAND_DATA") or os.path.join(HERE, "data", "training")  # tests point this elsewhere
+PADS_FILE = os.path.join(DATA, "pads.json")  # how many pads are in use and their names
 PHONE_URL = ""
 HTTPS_PORT = int(os.environ.get("DESKBAND_HTTPS_PORT", 8443))
 HTTP_PORT = int(os.environ.get("DESKBAND_HTTP_PORT", 8000))
 
 subscribers = []
 sub_lock = threading.Lock()
+log_lock = threading.Lock()
 last_ready = None  # replayed to laptop pages that connect after the phone pressed Play
+
+
+def broadcast(line):
+    """Send one JSON line to every stage page listening on /events."""
+    with sub_lock:
+        for q in subscribers:
+            q.put(line)
+
+
+def read_json(path, default):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return default
 
 
 def lan_ip():
@@ -111,23 +129,25 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._file("phone.html", "text/html; charset=utf-8")
         if path in ("/stage", "/stage.html"):
             return self._file("stage.html", "text/html; charset=utf-8")
-        if path == "/core.js":
-            return self._file("core.js", "application/javascript; charset=utf-8")
+        if path in ("/core.js", "/pads.js"):
+            return self._file(path[1:], "application/javascript; charset=utf-8")
         if path == "/vendor/qrcode.js":
             return self._file(os.path.join("vendor", "qrcode.js"), "application/javascript; charset=utf-8")
         if path == "/events":
             return self._events()
         if path == "/info":
             return self._json({"phone_url": PHONE_URL})
+        if path == "/pads":
+            return self._json(read_json(PADS_FILE, None) or {})
         if path == "/samples":
             f = self._samples_file()
             if not f:
                 return self.send_error(400)
-            data = []
-            if os.path.exists(f):
-                with open(f, encoding="utf-8") as fh:
-                    data = json.load(fh)
-            return self._json(data)
+            data = read_json(f, None)
+            if data is None and os.path.basename(f).startswith("training-4p-"):
+                # training saved before pad counts existed (training-<ms>ms.json) counts as 4 pads
+                data = read_json(os.path.join(DATA, os.path.basename(f).replace("-4p-", "-")), None)
+            return self._json(data or [])
         self.send_error(404)
 
     def _json(self, obj, code=200):
@@ -140,13 +160,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _samples_file(self):
-        """Training taps are kept on the laptop too, so the phone is ready instantly next time."""
+        """Training taps are kept on the laptop too, so the phone is ready instantly next time.
+        One file per pad count and Response setting: training-<count>p-<ms>ms.json."""
         q = self.path.split("?", 1)[1] if "?" in self.path else ""
-        resp = dict(p.split("=", 1) for p in q.split("&") if "=" in p).get("resp", "45")
-        if not resp.isdigit():
+        args = dict(p.split("=", 1) for p in q.split("&") if "=" in p)
+        resp, pads = args.get("resp", "45"), args.get("pads", "4")
+        if not resp.isdigit() or pads not in ("4", "5", "6", "8"):
             return None
         os.makedirs(DATA, exist_ok=True)
-        return os.path.join(DATA, f"training-{resp}ms.json")
+        return os.path.join(DATA, f"training-{pads}p-{resp}ms.json")
 
     def _events(self):
         self.send_response(200)
@@ -177,6 +199,39 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     subscribers.remove(q)
 
     def do_POST(self):
+        if self.path.split("?")[0] == "/pads":
+            n = int(self.headers.get("Content-Length", 0))
+            try:
+                data = json.loads(self.rfile.read(n) or b"{}")
+            except json.JSONDecodeError:
+                return self.send_error(400)
+            if not isinstance(data, dict) or data.get("count") not in (4, 5, 6, 8) or not isinstance(data.get("names", {}), dict):
+                return self.send_error(400)
+            cfg = {"count": data["count"], "names": {str(k): str(v)[:24] for k, v in data.get("names", {}).items()}}
+            os.makedirs(DATA, exist_ok=True)
+            with open(PADS_FILE, "w", encoding="utf-8") as fh:
+                json.dump(cfg, fh)
+            broadcast(json.dumps({"type": "pads", **cfg}))
+            self.send_response(204)
+            self.end_headers()
+            return
+        if self.path.split("?")[0] == "/log":
+            # session log from the phone: one JSON line per knock, appended to data/training/log-<date>.jsonl
+            n = int(self.headers.get("Content-Length", 0))
+            try:
+                events = json.loads(self.rfile.read(min(n, 5_000_000)) or b"[]")
+            except json.JSONDecodeError:
+                return self.send_error(400)
+            if not isinstance(events, list):
+                return self.send_error(400)
+            os.makedirs(DATA, exist_ok=True)
+            day = time.strftime("%Y-%m-%d")
+            with log_lock, open(os.path.join(DATA, f"log-{day}.jsonl"), "a", encoding="utf-8") as fh:
+                for ev in events:
+                    fh.write(json.dumps(ev) + "\n")
+            self.send_response(204)
+            self.end_headers()
+            return
         if self.path.split("?")[0] == "/samples":
             f = self._samples_file()
             n = int(self.headers.get("Content-Length", 0))
@@ -202,9 +257,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if msg.get("type") == "ready":
             global last_ready
             last_ready = line
-        with sub_lock:
-            for q in subscribers:
-                q.put(line)
+        broadcast(line)
         self.send_response(204)
         self.end_headers()
 
