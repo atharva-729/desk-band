@@ -16,3 +16,7 @@ data/training/
 data/raw/
 data/recordings/
 node_modules/
+
+# private notes: handoff and planning docs stay local, never on GitHub
+HANDOFF.txt
+QUICK_WINS.md

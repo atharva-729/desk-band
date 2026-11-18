@@ -75,7 +75,7 @@ Needs Python 3.9+ on the laptop. The certificate is made automatically. If that 
 
 ---
 
-## Demo it (online meeting)
+## Demo it over a video call
 
 The laptop page is built to be screen-shared:
 - **Join card:** the phone scans a QR code. No typing IPs.
@@ -140,7 +140,7 @@ knock ─► phone mic (high-pass, onset detector) ─► 75 ms snippet ─► 1
 desk-band/
   README.md  server.py  .gitignore
   static/  core.js  phone.html  stage.html
-  CLAUDE.md  HANDOFF.txt         # context for Claude Code: start with HANDOFF.txt
+  CLAUDE.md                      # notes for Claude Code (its longer handoff notes stay local, not in the repo)
   static/vendor/qrcode.js        # QR code library (MIT), so the join QR works offline
   tests/   test_core.js          # offline synthetic test (detection, classification, 8 knocks/sec)
   tools/   analysis/             # Python scripts used on the phyphox + voice-memo recordings
