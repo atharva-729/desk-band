@@ -36,6 +36,7 @@ FILES = {
     "/phone.html": ("phone.html", "text/html; charset=utf-8"),
     "/stage.html": ("stage.html", "text/html; charset=utf-8"),
     "/sonar.js": ("sonar.js", "application/javascript; charset=utf-8"),
+    "/theremin.js": ("theremin.js", "application/javascript; charset=utf-8"),
     "/vendor/qrcode.js": (os.path.join("vendor", "qrcode.js"), "application/javascript; charset=utf-8"),
 }
 

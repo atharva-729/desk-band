@@ -41,13 +41,16 @@ const { launch, startServer, wait } = require("./cdp");
     // 2. simulated hand
     phone = await chrome.page(srv.phone + "?sim", { width: 390, height: 844, mobile: true, dpr: 2 });
     await phone.click("#start");
+    await stage.click("#sound");
+    await stage.js(`__play.mapper.setRange(6, 30); document.getElementById("pEasy").click(); document.getElementById("vTher").click()`);
     await phone.until(`window.__ht && __ht.learntAt != null`);
-    const samples = [];
+    const samples = [], played = [];
     const t0 = Date.now();
     let shotAt = 11500, shot = false;
     while (Date.now() - t0 < 13000) {
       const l = await phone.js(`({ h: __ht.last.handCm, s: __ht.last.simCm, learning: __ht.last.learning })`);
       samples.push(l);
+      played.push({ s: l.s, ...(await stage.js(`({ gate: __play.out && __play.out.gate, note: __play.out && __play.out.note, gain: __play.synth && __play.synth.gain })`)) });
       if (!shot && Date.now() - t0 > shotAt) { await stage.shot(path.join(out, "phase0-stage-sim.png")); await phone.shot(path.join(out, "phase0-phone-sim.png")); shot = true; }
       await wait(60);
     }
@@ -60,6 +63,29 @@ const { launch, startServer, wait } = require("./cdp");
     const st = await stage.js(`({ hand: hand.textContent, link: link.textContent, cols: __stage.cols })`);
     console.log("stage:", JSON.stringify(st));
     check(/cm$|no hand/.test(st.hand) && st.link === "phone connected (simulated mic)", "stage shows the hand distance from the simulated phone");
+    // The stage plays it: easy mode, range 6-30 cm (3 cm a note) -> 10 cm = note 1, 20 cm = note 4, 30 cm = note 7
+    const top = (arr) => { const c = {}; arr.forEach((v) => (c[v] = (c[v] || 0) + 1)); return +Object.entries(c).sort((a, b) => b[1] - a[1])[0][0]; };
+    const notesAt = [10, 20, 30].map((cm) => top(played.filter((p) => p.s === cm && p.gate).map((p) => p.note)));
+    check(notesAt.join() === "1,4,7", `stage plays note 1 / 4 / 7 at 10 / 20 / 30 cm (got ${notesAt.join(" / ")})`);
+    const sounding = played.filter((p) => p.s != null && p.gate && p.gain > 0).length / played.filter((p) => p.s != null).length;
+    const silent = played.filter((p) => p.s == null && !p.gate).length / Math.max(1, played.filter((p) => p.s == null).length);
+    check(sounding >= 0.85, `sound on while the hand is there (${Math.round(sounding * 100)}%)`);
+    check(silent >= 0.35, `quiet while it's away (${Math.round(silent * 100)}%; the 400 ms hold and the lag eat into the 1 s gap)`);
+    const lag = await stage.js(`Math.round(__play.lag)`);
+    console.log(`INFO estimated lag phone reading -> sound: ${lag} ms (headless Chrome)`);
+    await stage.click("#pGlide");
+    await phone.until(`((performance.now() - __ht.learntAt) / 1000 % 12) > 8 && ((performance.now() - __ht.learntAt) / 1000 % 12) < 8.5`, 13000);  // the sweep
+    const freqs = new Set();
+    for (let i = 0; i < 40; i++) { const f = await stage.js(`__play.synth.freq`); freqs.add(Math.round(f)); await wait(60); }
+    check(freqs.size >= 8, `glide mode: pitch moves continuously (${freqs.size} distinct pitches in 2.4 s)`);
+    await stage.click("#pEasy"); await stage.click("#vMar");
+    const k0 = await stage.js(`__play.synth.strikes`);
+    await wait(4000);
+    const k1 = await stage.js(`__play.synth.strikes`);
+    check(k1 - k0 >= 2, `marimba: notes are struck as the height changes (${k1 - k0} strikes in 4 s)`);
+    await stage.shot(path.join(out, "phase2-stage-play.png"));
+    check(stage.errors.length === 0, "no stage errors " + JSON.stringify(stage.errors));
+
     const behind = await phone.js(`Math.round(__ht.behind / 48)`), remeasures0 = await phone.js(`__ht.sonar.relearns`);
     check(remeasures0 === 0, `no re-measuring unless asked (${remeasures0})`);
     console.log(`INFO mic audio behind the clock: ${behind} ms`);

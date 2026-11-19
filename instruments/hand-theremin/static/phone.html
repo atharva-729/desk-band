@@ -100,7 +100,7 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const SIM = new URLSearchParams(location.search).has("sim"); // tests only: a pretend mic with a pretend hand
-  const SEND_MS = 33;
+  const SEND_MS = 20;        // about every echo profile, so the laptop's note lags as little as possible
   const SAVE_MS = 1000;      // how often the session log and audio go to the laptop
   let run = null;           // everything for one Start..Stop
   let mode = "change";
@@ -245,14 +245,14 @@
     res.simCm = r.sim ? simHand(r) : undefined;
     r.last = res;
     r.map.push({ change: r.sonar.colChange.slice(), raw: r.sonar.colRaw.slice(), hand: res.handCm });
-    r.pending.push({ c: Sonar.toB64(r.sonar.colChange), w: Sonar.toB64(r.sonar.colRaw), h: res.handCm == null ? null : +res.handCm.toFixed(2) });
+    r.pending.push({ c: Sonar.toB64(r.sonar.colChange), w: Sonar.toB64(r.sonar.colRaw), h: res.handCm == null ? null : +res.handCm.toFixed(2), ft: performance.now() });
     if (r.pending.length > 8) r.pending.shift();
   }
 
   function send(r) {
     if (!r.last || r.inflight >= 4) return; // laptop not keeping up: drop rather than queue stale data
-    const l = r.last, cols = r.pending.splice(0);
-    if (!cols.length) return;
+    const l = r.last, now = performance.now(), cols = r.pending.splice(0).map(({ ft, ...c }) => ({ ...c, a: Math.round(now - ft) }));
+    if (!cols.length) return;  // a = how old each reading is when it leaves the phone (ms), for the lag estimate
     const msg = { type: "state", seq: ++r.seq, t: Math.round(performance.now()), fs: r.ctx.sampleRate, rows: r.sonar.rows,
       cmPerRow: r.sonar.cmPerRow, learning: l.learning, hand: l.handCm, present: l.present, ratio: +l.ratio.toFixed(1),
       snr: +l.snrDb.toFixed(1), direct: +l.directDb.toFixed(1), micPeak: +l.micPeak.toFixed(3), clip: l.clip,

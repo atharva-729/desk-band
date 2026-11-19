@@ -21,12 +21,13 @@ Instrument #4 in the phone-instrument set. It lives in its **own folder** (`inst
 
 ---
 
-## Run it (Phase 0: sonar check, no music yet)
+## Run it
 
 ```
 cd instruments/hand-theremin
 python server.py                 # laptop http://localhost:8003, phone https://<ip>:8446 (QR on the laptop page)
 node tests/test_sonar.js         # offline: the sonar maths on a simulated mic
+node tests/test_theremin.js      # offline: height -> note (range, hysteresis, dropouts, smoothing)
 node tests/phase0_e2e.js [dir]   # headless Chrome: phone + laptop pages, fake mic and simulated hand
 node tools/replay.js data/sessions/<id>   # replay a saved phone session: per-second table + <id>-replay.png
 ```
@@ -40,6 +41,14 @@ and `<id>.pcm` (the raw mic audio, 16-bit). Untick "Save this session" on the ph
 3. Watch the **echo map** on the laptop: up = farther above the phone, left to right = the last 8 seconds.
    A hand held still at 10 cm should draw a bright flat line at 10 cm; moving it up and down makes the line climb and fall.
 4. "Chirp heard" must say **yes**. If not: volume up, silent mode off.
+
+**Playing (with a book, for now).** A hand only tracks to about 14 cm, too tight to play, so the instrument is played
+with a book held flat over the bottom edge, which tracks to about 36 cm. On the laptop page: **Enable sound**, hold the book
+where the lowest note should be and click **Set low note here**, then where the highest should be and **Set high note here**
+(no ruler needed; it's saved in the browser). **Easy** plays 8 pentatonic notes, C4 to E5; **Theremin** glides C3 to C5.
+Voices: theremin (sine and a little triangle, vibrato, reverb) or marimba (easy mode). Taking the book away fades the note
+out; dropouts under 0.4 s hold it. The page shows an estimated lag from the phone's reading to the sound, worked out from the
+measured parts (about 110–150 ms in headless Chrome, most of it smoothing and audio output).
 
 **Hearing note:** most adults can't hear 18–21 kHz, but some people, especially younger ones, and pets can.
 Keep the volume as low as still gives "Chirp heard: yes", stop if it bothers anyone, and never use headphones.
