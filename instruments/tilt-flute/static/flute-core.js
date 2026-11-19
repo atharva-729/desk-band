@@ -155,9 +155,11 @@
   }
 
   // ---------- Breath detector ----------
-  // Breath = the 50-1000 Hz band is well above the room's noise floor AND the sound is hiss-like (flat, not periodic).
+  // Breath = the 50-1000 Hz band is well above the room's noise floor AND the sound doesn't repeat at a voice pitch.
+  // Tuned on the first iPhone sound run (19 Nov): loud talking had periodicity 0.94-1.0, blowing about 0.45.
+  // Flatness turned out useless (blowing on the mic is a steep low rumble, flatness ~0 like speech), so flatMin is 0.
   // Output level 0..1 with a fast attack and a gentle release.
-  const BREATH_DEFAULTS = { margin: 15, range: 30, flatMin: 0.1, periodMax: 0.6, attackMs: 10, releaseMs: 80 };
+  const BREATH_DEFAULTS = { margin: 30, range: 35, flatMin: 0, periodMax: 0.8, attackMs: 10, releaseMs: 80 };
   class BreathDetector {
     constructor(opts = {}) {
       this.o = { ...BREATH_DEFAULTS, ...opts };

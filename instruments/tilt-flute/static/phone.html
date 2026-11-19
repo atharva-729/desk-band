@@ -69,7 +69,7 @@
       <button id="calBtn">Calibrate</button>
       <button id="runBtn" disabled>Full test run</button>
     </div>
-    <button id="soundBtn" class="primary">Sound test (about 45 s, no tilt)</button>
+    <button id="soundBtn" class="primary">Sound test (about 55 s, no tilt)</button>
     <div class="card hidden" id="doneCard"></div>
     <div class="card">
       <div class="lbl">Sensors and link</div>
@@ -331,11 +331,12 @@
     if (!soundOnly) for (let k = 0; k < STEPS; k++) p.push({ kind: "hold", step: k, label: `hold-${k + 1}`, prep: 2500, rec: 2000 });
     if (soundOnly) {
       for (let i = 0; i < 3; i++) {
-        p.push({ kind: "blow", label: "blow-soft", prep: 1000, rec: 2500 });
-        p.push({ kind: "blow", label: "blow-hard", prep: 1000, rec: 2500 });
-        p.push({ kind: "talk", label: "talk", prep: 1000, rec: 3000 });
+        // 2 s lead-in: in the first sound run, blowing often started 1.5-2.5 s after the prompt appeared
+        p.push({ kind: "blow", label: "blow-soft", prep: 2000, rec: 2500 });
+        p.push({ kind: "blow", label: "blow-hard", prep: 2000, rec: 2500 });
+        p.push({ kind: "talk", label: "talk", prep: 2000, rec: 3000 });
       }
-      for (let i = 0; i < 2; i++) p.push({ kind: "silence", label: "silence", prep: 1000, rec: 3000 });
+      for (let i = 0; i < 2; i++) p.push({ kind: "silence", label: "silence", prep: 2000, rec: 3000 });
     } else for (let i = 0; i < 2; i++) {
       p.push({ kind: "blow", label: "blow-soft", prep: 1000, rec: 2000 });
       p.push({ kind: "blow", label: "blow-hard", prep: 1000, rec: 2000 });
@@ -347,8 +348,8 @@
     return p;
   }
   const TEXT = {
-    "blow-soft": ["Blow SOFTLY", "Start now and keep going. Hold any note."],
-    "blow-hard": ["Blow HARD", "Start now and keep going. Hold any note."],
+    "blow-soft": ["Blow SOFTLY", "Start NOW and keep going until the next prompt"],
+    "blow-hard": ["Blow HARD", "Start NOW and keep going until the next prompt"],
     "talk": ["Count out loud", "“one, two, three…” in your normal voice, phone at your mouth"],
     "silence": ["Stay quiet", "Keep holding it like a flute"],
   };

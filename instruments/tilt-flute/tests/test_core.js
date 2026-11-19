@@ -47,10 +47,10 @@ const r = rng(7);
 const gen = {
   room: (n) => Float32Array.from({ length: n }, () => r() * 0.0005),
   breath: (n) => { let y = 0; return Float32Array.from({ length: n }, () => (y += 0.12 * (r() * 0.5 - y))); }, // low-passed hiss
-  voice: (n) => Float32Array.from({ length: n }, (_, i) => {
-    const t = i / SR, f0 = 140 * (1 + 0.02 * Math.sin(2 * Math.PI * 5 * t));
-    let v = 0; for (let h = 1; h <= 20; h++) v += Math.sin(2 * Math.PI * f0 * h * t) / h; return 0.08 * v + r() * 0.0005;
-  }),
+  voice: (n) => { let ph = 0; return Float32Array.from({ length: n }, (_, i) => { // pitch with 5 Hz vibrato, phase built up sample by sample
+    ph += (2 * Math.PI * 140 * (1 + 0.02 * Math.sin(2 * Math.PI * 5 * i / SR))) / SR;
+    let v = 0; for (let h = 1; h <= 20; h++) v += Math.sin(ph * h) / h; return 0.08 * v + r() * 0.0005;
+  }); },
   flute: (n) => Float32Array.from({ length: n }, (_, i) => {
     const t = i / SR; return 0.1 * (Math.sin(2 * Math.PI * 523 * t) + 0.2 * Math.sin(2 * Math.PI * 1046 * t) + 0.1 * Math.sin(2 * Math.PI * 1569 * t)) + r() * 0.0005;
   }),

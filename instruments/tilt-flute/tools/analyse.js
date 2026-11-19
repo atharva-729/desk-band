@@ -94,9 +94,9 @@ function breathDelays(d) {
 // Thresholds chosen on one run: most blow frames caught while talk stays under 5% and silence under 1%
 function tune(d) {
   let best = null;
-  for (const margin of [6, 9, 12, 15, 18, 21])
+  for (const margin of [10, 15, 20, 25, 30, 35, 40])
     for (const flatMin of [0, 0.02, 0.05, 0.1, 0.15, 0.2, 0.3])
-      for (const periodMax of [0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.01]) {
+      for (const periodMax of [0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 1.01]) {
         const o = { margin, flatMin, periodMax }, r = breathRates(d, o);
         if (!(r.talk < 0.05) || !(r.silence < 0.01)) continue;
         if (!best || r.blow > best.r.blow || (r.blow === best.r.blow && r.talk < best.r.talk)) best = { o, r };
