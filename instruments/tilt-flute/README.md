@@ -74,8 +74,10 @@ phone mic ──► breath detector ──► breath level (0–1, smoothed) ─
 **Status: built.** Run it from this folder:
 ```
 python server.py              # laptop http://localhost:8002, phone https://<ip>:8445 (QR on the laptop page)
-node tests/phase0_e2e.js [out-dir]   # fake phone -> server -> stage check, with screenshots (starts its own server)
+node tests/test_core.js              # offline: gravity tilt, hysteresis, breath detector on synthetic sounds
+node tests/pages_e2e.js [out-dir]    # fake phone -> server -> stage, calibration, a fast test run (starts its own server)
 ```
+The server also logs every live message to `data/live/live-<date>.jsonl` (numbers only, gitignored).
 The phone page also shows pitch and roll worked out from gravity (accelerometer), next to the orientation angles.
 Orientation angles get unstable when the phone is held near upright, so Phase 1 compares the two.
 
@@ -107,6 +109,24 @@ Orientation angles get unstable when the phone is held near upright, so Phase 1 
 - breath detected in at least 95% of blow frames;
 - fewer than 5% false triggers during talking.
 If it fails, suggest fixes such as fewer steps, a wider range, or a different breath feature.
+
+**Status: built.** Findings from the first live log (19 Nov) that shaped it:
+- The phone's own tilt angle (beta) **jumps by 180°** when the phone is rolled far onto its side, which is how a flute
+  is held. Tilt is therefore taken from **gravity** (`accelerationIncludingGravity`), which stayed smooth through
+  every one of those jumps. iOS reports gravity with the opposite sign to the spec; the maths doesn't care.
+- **Calibration picks the note axis:** you hold your lowest note, then your highest. Whatever motion you made
+  between the two is the note axis, so holding it sideways or upright both work. Rotation off that axis is kept as
+  `off` (for vibrato later).
+- **Loudness alone can't tell blowing from talking:** talking read -46 to -57 dB, blowing -34 to -43 dB, with
+  overlapping peaks. The detector adds spectral **flatness** (hiss vs tone) and **periodicity** (voice pitch).
+
+The test run (phone: Calibrate, then Start test run, about 65 s) asks in random order: hold each of the 8 notes
+(2.5 s to get there, 2 s recorded), blow softly ×2, blow hard ×2, count out loud ×2, stay quiet ×2. It saves the raw
+gravity, orientation and mic features (no audio) to `data/sessions/`. Then:
+```
+node tools/analyse.js data/sessions/session-A.json data/sessions/session-B.json   # numbers + data/report/report.html
+```
+Breath thresholds are tuned on one run and tested on the other, never on the same run.
 
 ### CHECKPOINT 1
 - The numbers above for both runs.

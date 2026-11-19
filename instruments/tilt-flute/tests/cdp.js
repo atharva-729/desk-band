@@ -77,10 +77,12 @@ async function connect(wsUrl) {
 async function startServer({ http = 8120, https = 8565 } = {}) {
   const root = path.join(__dirname, "..");
   const py = process.platform === "win32" ? "python" : "python3";
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), "tf-data-"));
   const proc = spawn(py, [path.join(root, "server.py")], { cwd: root, stdio: "ignore",
-    env: { ...process.env, TILTFLUTE_HTTP_PORT: String(http), TILTFLUTE_HTTPS_PORT: String(https) } });
+    env: { ...process.env, TILTFLUTE_DATA: data,
+      TILTFLUTE_HTTP_PORT: String(http), TILTFLUTE_HTTPS_PORT: String(https) } });
   for (let i = 0; i < 50; i++) { try { await (await fetch(`http://localhost:${http}/info`)).json(); break; } catch { await wait(200); } }
-  return { stage: `http://localhost:${http}/`, phone: `https://localhost:${https}/`, stop: () => proc.kill() };
+  return { stage: `http://localhost:${http}/`, phone: `https://localhost:${https}/`, data, stop: () => proc.kill() };
 }
 
 module.exports = { launch, startServer, wait };

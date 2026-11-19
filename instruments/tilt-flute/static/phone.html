@@ -6,95 +6,153 @@
 <title>Tilt Flute · Phone</title>
 <style>
   :root { --bg:#0e0f13; --panel:#181a21; --line:#2a2d38; --ink:#eef0f6; --dim:#8b90a3; --ok:#3dd6a3; --warn:#ffc23d;
-          --accent:#5aa8ff; }
+          --accent:#5aa8ff; --blow:#ff8a5a; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.4 -apple-system, system-ui, sans-serif;
          padding:16px; min-height:100vh; user-select:none; -webkit-user-select:none; }
   h1 { font-size:20px; margin:0 0 2px; }
-  .sub { color:var(--dim); font-size:13px; margin-bottom:14px; }
-  button { font:inherit; color:#14151a; background:var(--accent); border:0; border-radius:12px; padding:14px; width:100%;
-           font-weight:700; }
+  .sub { color:var(--dim); font-size:13px; margin-bottom:12px; }
+  button { font:inherit; color:var(--ink); background:var(--panel); border:1px solid var(--line); border-radius:12px;
+           padding:14px; width:100%; font-weight:600; }
+  button.primary { color:#14151a; background:var(--accent); border-color:var(--accent); font-weight:700; }
+  button:disabled { opacity:.4; }
+  .row { display:flex; gap:10px; margin:10px 0; } .row > * { flex:1; }
   .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px; margin:10px 0; }
-  .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-  .num { font-size:34px; font-weight:800; font-variant-numeric:tabular-nums; }
   .lbl { color:var(--dim); font-size:12px; text-transform:uppercase; letter-spacing:.5px; }
+  .num { font-size:30px; font-weight:800; font-variant-numeric:tabular-nums; }
   .small { color:var(--dim); font-size:12px; font-variant-numeric:tabular-nums; }
-  .meter { height:10px; background:#0a0b0e; border-radius:6px; overflow:hidden; margin-top:6px; }
-  .meter i { display:block; height:100%; width:0; background:var(--ok); }
+  .meter { height:12px; background:#0a0b0e; border-radius:6px; overflow:hidden; margin-top:6px; }
+  .meter i { display:block; height:100%; width:0; background:var(--blow); }
   .bad { color:var(--warn); }
-  .hidden { display:none; }
+  .hidden { display:none !important; }
   table { width:100%; border-collapse:collapse; font-size:13px; font-variant-numeric:tabular-nums; }
   td { padding:3px 0; } td:last-child { text-align:right; }
+  /* the note ladder: lowest note on the left */
+  .ladder { position:relative; display:grid; grid-template-columns:repeat(8, 1fr); gap:4px; margin:10px 0; }
+  .ladder div { height:44px; border-radius:8px; background:#11131a; border:2px solid var(--line); display:flex;
+                align-items:center; justify-content:center; font-weight:700; color:var(--dim); }
+  .ladder div.target { border-color:var(--warn); color:var(--warn); }
+  .ladder div.cur { background:var(--accent); color:#14151a; }
+  .ladder div.cur.target { background:var(--ok); border-color:var(--ok); }
+  .ladder .pos { position:absolute; top:-6px; bottom:-6px; width:3px; margin-left:-1px; background:var(--ink); border:0; border-radius:2px; height:auto; }
+  /* full-screen overlay for calibration and the test run */
+  .overlay { position:fixed; inset:0; background:var(--bg); padding:20px; display:flex; flex-direction:column; justify-content:center; z-index:5; }
+  .prompt { font-size:30px; font-weight:800; text-align:center; line-height:1.2; }
+  .hint { text-align:center; color:var(--dim); margin-top:8px; }
+  .bar { height:8px; background:#0a0b0e; border-radius:4px; overflow:hidden; margin:16px 0; }
+  .bar i { display:block; height:100%; width:0; background:var(--dim); }
+  .bar.rec i { background:var(--ok); }
+  .rec-dot { text-align:center; font-size:13px; color:var(--dim); min-height:18px; }
+  .rec-dot.on { color:var(--ok); font-weight:700; }
 </style>
 </head>
 <body>
   <h1>Tilt Flute</h1>
-  <div class="sub">Phase 0: live sensor numbers. No sound yet.</div>
+  <div class="sub">Phase 1: signal test. Hold it sideways like a flute.</div>
 
   <div id="intro" class="card">
-    <p style="margin-top:0">Hold the phone like you'll play it. Tap Start and allow motion and the microphone.</p>
-    <button id="start">Start sensors</button>
+    <p style="margin-top:0">Tap Start and allow motion and the microphone.</p>
+    <button id="start" class="primary">Start sensors</button>
   </div>
 
   <div id="main" class="hidden">
-    <div class="grid">
-      <div class="card"><div class="lbl">Tilt (beta)</div><div class="num" id="beta">–</div>
-        <div class="small">front/back, °</div></div>
-      <div class="card"><div class="lbl">Roll (gamma)</div><div class="num" id="gamma">–</div>
-        <div class="small">left/right, °</div></div>
-    </div>
-    <div class="card"><div class="lbl">Mic level</div><div class="num" id="mic">–</div>
-      <div class="meter"><i id="micBar"></i></div><div class="small">dBFS, loudest block since the last send</div></div>
     <div class="card">
-      <div class="lbl">From gravity (accelerometer)</div>
-      <table>
-        <tr><td>pitch / roll</td><td id="grav">–</td></tr>
-        <tr><td>raw g (x, y, z)</td><td id="graw">–</td></tr>
-      </table>
+      <div class="row" style="margin:0">
+        <div><div class="lbl">Note</div><div class="num" id="step">–</div><div class="small" id="posTxt">not calibrated</div></div>
+        <div><div class="lbl">Breath</div><div class="num" id="breathTxt">–</div><div class="small" id="micTxt">–</div></div>
+      </div>
+      <div class="ladder" id="ladder"></div>
+      <div class="meter"><i id="breathBar"></i></div>
     </div>
+    <div class="row">
+      <button id="calBtn">Calibrate</button>
+      <button id="runBtn" class="primary" disabled>Start test run</button>
+    </div>
+    <div class="card hidden" id="doneCard"></div>
     <div class="card">
-      <div class="lbl">Link</div>
+      <div class="lbl">Sensors and link</div>
       <table>
-        <tr><td>orientation events</td><td id="oriHz">–</td></tr>
-        <tr><td>motion events</td><td id="motHz">–</td></tr>
-        <tr><td>mic audio blocks</td><td id="audHz">–</td></tr>
-        <tr><td>sent to laptop</td><td id="sendHz">–</td></tr>
-        <tr><td>round trip</td><td id="rtt">–</td></tr>
-        <tr><td>failed sends</td><td id="fails">0</td></tr>
+        <tr><td>phone tilt (beta) / roll (gamma)</td><td id="bg">–</td></tr>
+        <tr><td>off-axis turn (for vibrato later)</td><td id="off">–</td></tr>
+        <tr><td>flatness / periodicity</td><td id="fp">–</td></tr>
+        <tr><td>orientation · motion · mic frames</td><td id="rates">–</td></tr>
+        <tr><td>sent to laptop · round trip</td><td id="link">–</td></tr>
       </table>
       <div class="small" id="info"></div>
     </div>
   </div>
 
+  <div id="overlay" class="overlay hidden">
+    <div class="small" id="ovTop" style="text-align:center"></div>
+    <div class="prompt" id="ovPrompt"></div>
+    <div class="hint" id="ovHint"></div>
+    <div class="ladder hidden" id="ovLadder"></div>
+    <div class="meter hidden" id="ovMeter"><i id="ovBreath"></i></div>
+    <div class="bar" id="ovBar"><i id="ovBarFill"></i></div>
+    <div class="rec-dot" id="ovRec"></div>
+    <button id="ovStop" style="margin-top:20px">Stop</button>
+  </div>
+
+<script src="flute-core.js"></script>
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
-  const SEND_MS = 33; // about 30 messages a second
-  const s = { beta: null, gamma: null, gx: null, gy: null, gz: null, micDb: -120 };
-  let micPeak = 0, seq = 0, inflight = 0, fails = 0, rttMs = null;
-  const ev = { ori: [], mot: [], sent: [], audio: [] }; // timestamps, for rates over the last second
-  const rate = (arr) => { const now = performance.now(); while (arr.length && arr[0] < now - 1000) arr.shift(); return arr.length; };
-  let mic = null; // kept referenced: WebKit can garbage-collect an unreferenced ScriptProcessorNode and the mic goes silent
+  const C = window.FluteCore;
+  const STEPS = 8, HYST = 2.5, SMOOTH_MS = 40, SEND_MS = 33;
+  const FAST = new URLSearchParams(location.search).has("fast"); // tests: short prompts
 
+  // ---------- live state ----------
+  const s = { g: null, gs: null, beta: null, gamma: null, alpha: null, feat: null, breath: { on: false, level: 0 } };
+  const smoother = new C.VecSmoother(SMOOTH_MS);
+  let cal = null, stepper = null, tilt = null, step = null;
+  try { cal = JSON.parse(localStorage.getItem("tiltflute.cal") || "null"); } catch {}
+  const ev = { ori: [], mot: [], aud: [], sent: [] };
+  const rate = (arr) => { const now = performance.now(); while (arr.length && arr[0] < now - 1000) arr.shift(); return arr.length; };
+  let rec = null;            // the recording during a test run
+  let prompt = null;         // current prompt (shown on the laptop too)
+  let mic = null, feats = null, det = null; // mic kept referenced: WebKit can garbage-collect an unreferenced ScriptProcessorNode
+  let seq = 0, inflight = 0, fails = 0, rttMs = null;
+
+  function buildLadder(el) {
+    el.innerHTML = Array.from({ length: STEPS }, (_, i) => `<div>${i + 1}</div>`).join("") + '<div class="pos"></div>';
+  }
+  buildLadder($("ladder")); buildLadder($("ovLadder"));
+  function drawLadder(el, target) {
+    const cells = el.children;
+    for (let i = 0; i < STEPS; i++) {
+      cells[i].classList.toggle("cur", step === i);
+      cells[i].classList.toggle("target", target === i);
+    }
+    const pos = cells[STEPS];
+    if (tilt && cal) { pos.style.display = ""; pos.style.left = Math.max(0, Math.min(100, (tilt.pos / cal.span) * 100)) + "%"; }
+    else pos.style.display = "none";
+  }
+  function applyCal(c) {
+    cal = c;
+    if (!cal) return;
+    Object.assign(cal, C.calibrate(cal.gLow, cal.gHigh), { gLow: cal.gLow, gHigh: cal.gHigh });
+    stepper = new C.Stepper(STEPS, cal.span, HYST);
+    $("runBtn").disabled = false;
+  }
+
+  // ---------- sensors ----------
   $("start").addEventListener("click", async () => {
-    // iOS: both permissions must be asked inside the tap
     let oriOK = typeof DeviceOrientationEvent !== "undefined", motOK = typeof DeviceMotionEvent !== "undefined";
-    try {
-      if (oriOK && typeof DeviceOrientationEvent.requestPermission === "function")
-        oriOK = (await DeviceOrientationEvent.requestPermission()) === "granted";
-    } catch { oriOK = false; }
-    try {
-      if (motOK && typeof DeviceMotionEvent.requestPermission === "function")
-        motOK = (await DeviceMotionEvent.requestPermission()) === "granted";
-    } catch { motOK = false; }
+    try { if (oriOK && typeof DeviceOrientationEvent.requestPermission === "function") oriOK = (await DeviceOrientationEvent.requestPermission()) === "granted"; } catch { oriOK = false; }
+    try { if (motOK && typeof DeviceMotionEvent.requestPermission === "function") motOK = (await DeviceMotionEvent.requestPermission()) === "granted"; } catch { motOK = false; }
     window.addEventListener("deviceorientation", (e) => {
       if (e.beta == null) return;
-      s.beta = e.beta; s.gamma = e.gamma; ev.ori.push(performance.now());
+      const t = performance.now();
+      s.alpha = e.alpha; s.beta = e.beta; s.gamma = e.gamma; ev.ori.push(t);
+      if (rec) rec.ori.push([r1(t), r2(e.alpha), r2(e.beta), r2(e.gamma)]);
     });
     window.addEventListener("devicemotion", (e) => {
       const g = e.accelerationIncludingGravity;
       if (!g || g.x == null) return;
-      s.gx = g.x; s.gy = g.y; s.gz = g.z; ev.mot.push(performance.now());
+      const t = performance.now();
+      s.g = [g.x, g.y, g.z]; s.gs = smoother.push(s.g, t); ev.mot.push(t);
+      if (cal) { tilt = C.tiltAngles(s.gs, cal); step = stepper.update(tilt.pos); }
+      if (rec) rec.mot.push([r1(t), r3(g.x), r3(g.y), r3(g.z)]);
     });
     try { await startMic(); } catch (err) {
       alert("Could not start the microphone: " + err.message + "\n\nOpen this page over https and allow the microphone.");
@@ -103,8 +161,9 @@
     try { if ("wakeLock" in navigator) await navigator.wakeLock.request("screen"); } catch {}
     $("intro").classList.add("hidden"); $("main").classList.remove("hidden");
     $("info").textContent = `${mic.label} · ${(mic.ctx.sampleRate / 1000).toFixed(1)} kHz · orientation ${oriOK ? "on" : "OFF"} · motion ${motOK ? "on" : "OFF"}`;
+    if (cal) applyCal(cal);
     setInterval(send, SEND_MS);
-    setInterval(draw, 100);
+    setInterval(draw, 50);
   });
 
   async function startMic() {
@@ -114,32 +173,29 @@
     await ctx.resume();
     const src = ctx.createMediaStreamSource(stream);
     const proc = ctx.createScriptProcessor(256, 1, 1);
+    feats = new C.AudioFeatures(ctx.sampleRate); det = new C.BreathDetector();
     proc.onaudioprocess = (e) => {
-      ev.audio.push(performance.now());
-      const x = e.inputBuffer.getChannelData(0);
-      let sum = 0;
-      for (let i = 0; i < x.length; i++) sum += x[i] * x[i];
-      micPeak = Math.max(micPeak, Math.sqrt(sum / x.length));
+      feats.push(e.inputBuffer.getChannelData(0), performance.now(), (f) => {
+        ev.aud.push(performance.now());
+        s.feat = f; s.breath = det.push(f);
+        if (rec) rec.aud.push([r1(f.t), r2(f.rms), r2(f.band), r4(f.flat), r3(f.period)]);
+      });
     };
     src.connect(proc); proc.connect(ctx.destination); // output stays silent
     mic = { stream, ctx, src, proc, label: stream.getAudioTracks()[0].label || "mic" };
   }
+  const r1 = (v) => Math.round(v * 10) / 10, r2 = (v) => (v == null ? null : Math.round(v * 100) / 100);
+  const r3 = (v) => Math.round(v * 1000) / 1000, r4 = (v) => Math.round(v * 10000) / 10000;
 
-  // Pitch and roll worked out from gravity, as a second opinion to the orientation angles
-  // (beta/gamma get unstable when the phone is held near upright). Signs still to be checked on the iPhone.
-  function gravAngles() {
-    if (s.gx == null) return null;
-    const deg = 180 / Math.PI;
-    return { pitch: Math.atan2(s.gy, s.gz) * deg, roll: Math.atan2(s.gx, Math.hypot(s.gy, s.gz)) * deg };
-  }
-
+  // ---------- stream to the laptop ----------
   function send() {
-    s.micDb = Math.max(-120, 20 * Math.log10(micPeak + 1e-9));
-    micPeak = 0;
     if (inflight >= 4) return; // laptop not keeping up: drop this one rather than queue stale data
-    const ga = gravAngles();
+    const f = s.feat;
     const msg = { type: "state", seq: ++seq, t: Math.round(performance.now()), beta: s.beta, gamma: s.gamma,
-      gp: ga && ga.pitch, gr: ga && ga.roll, mic: s.micDb, oriHz: rate(ev.ori), motHz: rate(ev.mot), rtt: rttMs, audHz: rate(ev.audio) };
+      pos: tilt && r2(tilt.pos), off: tilt && r2(tilt.off), step, span: cal && r2(cal.span),
+      mic: f && r2(f.band), flat: f && r4(f.flat), period: f && r3(f.period), floor: s.breath.floor != null ? r2(s.breath.floor) : null,
+      breath: s.breath.on, level: r3(s.breath.level), prompt: prompt && prompt.label,
+      oriHz: rate(ev.ori), motHz: rate(ev.mot), audHz: rate(ev.aud), rtt: rttMs };
     const t0 = performance.now();
     inflight++;
     fetch("/state", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(msg) })
@@ -148,24 +204,141 @@
       .finally(() => { inflight--; });
   }
 
-  const f1 = (v) => (v == null ? "–" : v.toFixed(1));
   function draw() {
-    $("beta").textContent = s.beta == null ? "–" : s.beta.toFixed(1) + "°";
-    $("gamma").textContent = s.gamma == null ? "–" : s.gamma.toFixed(1) + "°";
-    $("mic").textContent = s.micDb.toFixed(0);
-    $("micBar").style.width = Math.max(0, Math.min(100, (s.micDb + 90) / 90 * 100)) + "%";
-    const ga = gravAngles();
-    $("grav").textContent = ga ? `${f1(ga.pitch)}° / ${f1(ga.roll)}°` : "–";
-    $("graw").textContent = s.gx == null ? "–" : `${f1(s.gx)}, ${f1(s.gy)}, ${f1(s.gz)}`;
-    const o = rate(ev.ori), m = rate(ev.mot), sent = rate(ev.sent);
-    $("oriHz").textContent = o + " /s"; $("oriHz").classList.toggle("bad", o < 30);
-    $("motHz").textContent = m + " /s";
-    const a = rate(ev.audio);
-    $("audHz").textContent = a + " /s"; $("audHz").classList.toggle("bad", a === 0);
-    $("sendHz").textContent = sent + " /s"; $("sendHz").classList.toggle("bad", sent < 30);
-    $("rtt").textContent = rttMs == null ? "–" : rttMs + " ms";
-    $("fails").textContent = fails;
+    $("step").textContent = step == null ? "–" : `${step + 1} / ${STEPS}`;
+    $("posTxt").textContent = cal ? (tilt ? `${tilt.pos.toFixed(1)}° of ${cal.span.toFixed(0)}°` : "–") : "not calibrated";
+    $("breathTxt").textContent = s.breath.on ? "BLOW" : "–";
+    $("breathTxt").style.color = s.breath.on ? "var(--blow)" : "";
+    const f = s.feat;
+    $("micTxt").textContent = f ? `${f.band.toFixed(0)} dB (floor ${s.breath.floor.toFixed(0)})` : "–";
+    $("breathBar").style.width = $("ovBreath").style.width = (s.breath.level * 100).toFixed(0) + "%";
+    drawLadder($("ladder"), null);
+    $("bg").textContent = s.beta == null ? "–" : `${s.beta.toFixed(1)}° / ${s.gamma.toFixed(1)}°`;
+    $("off").textContent = tilt ? tilt.off.toFixed(1) + "°" : "–";
+    $("fp").textContent = f ? `${f.flat.toFixed(3)} / ${f.period.toFixed(2)}` : "–";
+    $("rates").textContent = `${rate(ev.ori)} · ${rate(ev.mot)} · ${rate(ev.aud)} /s`;
+    $("link").textContent = `${rate(ev.sent)} /s · ${rttMs == null ? "–" : rttMs + " ms"}${fails ? ` · ${fails} failed` : ""}`;
+    if (prompt && prompt.kind === "hold") drawLadder($("ovLadder"), prompt.step);
   }
+
+  // ---------- overlay helpers ----------
+  let stopped = false;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  function overlay(on) { $("overlay").classList.toggle("hidden", !on); }
+  function show(top, text, hint, opts = {}) {
+    $("ovTop").textContent = top; $("ovPrompt").textContent = text; $("ovHint").textContent = hint || "";
+    $("ovLadder").classList.toggle("hidden", !opts.ladder); $("ovMeter").classList.toggle("hidden", !opts.meter);
+    if (opts.ladder) drawLadder($("ovLadder"), opts.target ?? null);
+  }
+  // Runs the bar for `ms`; `recording` turns it green. Resolves early (false) if Stop was pressed.
+  async function timed(ms, recording) {
+    $("ovBar").classList.toggle("rec", recording);
+    $("ovRec").textContent = recording ? "● recording" : "get ready…"; $("ovRec").classList.toggle("on", recording);
+    const t0 = performance.now();
+    while (performance.now() - t0 < ms) {
+      if (stopped) return false;
+      $("ovBarFill").style.width = (((performance.now() - t0) / ms) * 100).toFixed(1) + "%";
+      await sleep(30);
+    }
+    return true;
+  }
+  $("ovStop").addEventListener("click", () => { stopped = true; });
+
+  // ---------- calibration ----------
+  // Hold still at the lowest note, then the highest. Gravity is averaged over 1 s at each.
+  async function capture(label) {
+    show("Calibrate", `Tilt to your ${label} note`, "Hold it like a flute, then keep still", {});
+    if (!(await timed(FAST ? 600 : 3000, false))) return null;
+    show("Calibrate", "Hold still…", `capturing your ${label} note`, {});
+    const got = [];
+    const t0 = performance.now();
+    $("ovBar").classList.add("rec"); $("ovRec").textContent = "● measuring"; $("ovRec").classList.add("on");
+    while (performance.now() - t0 < 1000) {
+      if (stopped) return null;
+      if (s.g) got.push(s.g.slice());
+      $("ovBarFill").style.width = (((performance.now() - t0) / 1000) * 100).toFixed(0) + "%";
+      await sleep(20);
+    }
+    if (got.length < 5) { alert("No motion data: check motion access is allowed."); return null; }
+    return [0, 1, 2].map((i) => got.reduce((a, g) => a + g[i], 0) / got.length);
+  }
+  $("calBtn").addEventListener("click", async () => {
+    stopped = false; overlay(true);
+    const gLow = await capture("LOWEST"); if (!gLow) return overlay(false);
+    const gHigh = await capture("HIGHEST"); if (!gHigh) return overlay(false);
+    overlay(false);
+    const c = C.calibrate(gLow, gHigh);
+    if (c.span < 15) { alert(`The two positions are only ${c.span.toFixed(0)}° apart. Try again with a bigger tilt (30–60° works well).`); return; }
+    applyCal({ gLow, gHigh });
+    try { localStorage.setItem("tiltflute.cal", JSON.stringify({ gLow, gHigh })); } catch {}
+    $("doneCard").classList.remove("hidden");
+    $("doneCard").textContent = `Calibrated: ${c.span.toFixed(0)}° from lowest to highest, so each of the ${STEPS} notes is ${(c.span / STEPS).toFixed(1)}° wide.`;
+  });
+
+  // ---------- the prompted test run ----------
+  function makePrompts() {
+    const p = [];
+    for (let k = 0; k < STEPS; k++) p.push({ kind: "hold", step: k, label: `hold-${k + 1}`, prep: 2500, rec: 2000 });
+    for (let i = 0; i < 2; i++) {
+      p.push({ kind: "blow", label: "blow-soft", prep: 1000, rec: 2000 });
+      p.push({ kind: "blow", label: "blow-hard", prep: 1000, rec: 2000 });
+      p.push({ kind: "talk", label: "talk", prep: 1000, rec: 3000 });
+      p.push({ kind: "silence", label: "silence", prep: 1000, rec: 3000 });
+    }
+    for (let i = p.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [p[i], p[j]] = [p[j], p[i]]; }
+    if (FAST) p.forEach((q) => { q.prep = 300; q.rec = 400; });
+    return p;
+  }
+  const TEXT = {
+    "blow-soft": ["Blow SOFTLY", "Start now and keep going. Hold any note."],
+    "blow-hard": ["Blow HARD", "Start now and keep going. Hold any note."],
+    "talk": ["Count out loud", "“one, two, three…” in your normal voice, phone at your mouth"],
+    "silence": ["Stay quiet", "Keep holding it like a flute"],
+  };
+  $("runBtn").addEventListener("click", async () => {
+    if (!cal) return;
+    stopped = false; overlay(true);
+    const prompts = makePrompts();
+    rec = { mot: [], ori: [], aud: [], prompts: [] };
+    const started = new Date().toISOString(), t0 = performance.now();
+    for (let i = 0; i < prompts.length && !stopped; i++) {
+      const q = prompts[i];
+      prompt = q;
+      const top = `${i + 1} of ${prompts.length}`;
+      if (q.kind === "hold") show(top, `Go to note ${q.step + 1}`, "then hold it there", { ladder: true, target: q.step });
+      else show(top, TEXT[q.label][0], TEXT[q.label][1], { meter: true });
+      const tShow = performance.now();
+      if (!(await timed(q.prep, false))) break;
+      const tRec = performance.now();
+      if (!(await timed(q.rec, true))) break;
+      rec.prompts.push({ label: q.label, kind: q.kind, step: q.step ?? null, tShow: r1(tShow), tRecStart: r1(tRec), tRecEnd: r1(performance.now()) });
+    }
+    prompt = null;
+    const done = rec.prompts.length;
+    const data = { version: 1, started, complete: done === prompts.length, t0: r1(t0), tEnd: r1(performance.now()),
+      steps: STEPS, hyst: HYST, smoothMs: SMOOTH_MS, cal: { gLow: cal.gLow, gHigh: cal.gHigh, span: r2(cal.span) },
+      breathDefaults: C.BREATH_DEFAULTS, sampleRate: mic.ctx.sampleRate, mic: mic.label, ua: navigator.userAgent,
+      prompts: rec.prompts, mot: rec.mot, ori: rec.ori, aud: rec.aud };
+    rec = null;
+    show("", "Saving…", "", {});
+    let msg;
+    try {
+      const r = await fetch("/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      if (!r.ok) throw new Error("server said " + r.status);
+      const { file } = await r.json();
+      msg = `Saved ${file} on the laptop: ${done} of ${prompts.length} prompts.`;
+    } catch (err) {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: "application/json" }));
+      a.download = `tiltflute-session-${Date.now()}.json`; a.textContent = "download it instead";
+      msg = `Could not save to the laptop (${err.message}). `;
+      $("doneCard").textContent = msg; $("doneCard").appendChild(a); $("doneCard").classList.remove("hidden");
+      overlay(false); return;
+    }
+    overlay(false);
+    $("doneCard").textContent = msg + (done < prompts.length ? " Stopped early." : " Thanks!");
+    $("doneCard").classList.remove("hidden");
+  });
 })();
 </script>
 </body>

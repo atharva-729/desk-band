@@ -17,10 +17,14 @@ import ssl
 import subprocess
 import sys
 import threading
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATIC = os.path.join(HERE, "static")
 CERTS = os.path.join(HERE, ".certs")
+DATA = os.environ.get("TILTFLUTE_DATA") or os.path.join(HERE, "data")  # tests point this elsewhere
+LIVE = os.path.join(DATA, "live")
+SESSIONS = os.path.join(DATA, "sessions")
 PHONE_URL = ""
 HTTPS_PORT = int(os.environ.get("TILTFLUTE_HTTPS_PORT", 8445))
 HTTP_PORT = int(os.environ.get("TILTFLUTE_HTTP_PORT", 8002))
@@ -28,11 +32,13 @@ HTTP_PORT = int(os.environ.get("TILTFLUTE_HTTP_PORT", 8002))
 FILES = {
     "/phone.html": ("phone.html", "text/html; charset=utf-8"),
     "/stage.html": ("stage.html", "text/html; charset=utf-8"),
+    "/flute-core.js": ("flute-core.js", "application/javascript; charset=utf-8"),
     "/vendor/qrcode.js": (os.path.join("vendor", "qrcode.js"), "application/javascript; charset=utf-8"),
 }
 
 subscribers = []
 sub_lock = threading.Lock()
+log_lock = threading.Lock()
 
 
 def broadcast(line):
@@ -163,6 +169,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     subscribers.remove(q)
 
     def do_POST(self):
+        if self.path.split("?")[0] == "/session":
+            return self._save_session()
         if self.path.split("?")[0] != "/state":
             return self.send_error(404)
         n = int(self.headers.get("Content-Length", 0))
@@ -172,9 +180,35 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.send_error(400)
         if not isinstance(msg, dict):
             return self.send_error(400)
-        broadcast(json.dumps(msg))
+        line = json.dumps(msg)
+        broadcast(line)
+        # Keep every message so a session can be read back afterwards: data/live/live-<date>.jsonl (gitignored).
+        # Numbers only (angles, mic level), never audio. "rx" is the laptop's clock in ms.
+        os.makedirs(LIVE, exist_ok=True)
+        with log_lock, open(os.path.join(LIVE, f"live-{time.strftime('%Y-%m-%d')}.jsonl"), "a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"rx": round(time.time() * 1000), **msg}) + "\n")
         self.send_response(204)
         self.end_headers()
+
+
+    def _save_session(self):
+        """A prompted test run from the phone: sensor samples, mic features and prompts (numbers only, no audio)
+        -> data/sessions/session-<date>-<time>.json"""
+        n = int(self.headers.get("Content-Length", 0))
+        if n > 50_000_000:
+            return self.send_error(413)
+        try:
+            data = json.loads(self.rfile.read(n) or b"{}")
+        except json.JSONDecodeError:
+            return self.send_error(400)
+        if not isinstance(data, dict) or not isinstance(data.get("prompts"), list):
+            return self.send_error(400)
+        os.makedirs(SESSIONS, exist_ok=True)
+        name = time.strftime("session-%Y%m%d-%H%M%S.json")
+        with open(os.path.join(SESSIONS, name), "w", encoding="utf-8") as fh:
+            json.dump(data, fh)
+        print(f"  saved {name}", flush=True)
+        return self._json({"file": name})
 
 
 class PhoneServer(http.server.ThreadingHTTPServer):
