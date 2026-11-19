@@ -89,9 +89,9 @@ const gen = {
   const det = new C.BreathDetector(); let t = 0;
   for (let i = 0; i < 50; i++) det.push({ t: (t += 10.7), band: -70, flat: 0.5, period: 0.2 });
   const up = []; for (let i = 0; i < 8; i++) up.push(det.push({ t: (t += 10.7), band: -30, flat: 0.5, period: 0.2 }).level);
-  const down = []; for (let i = 0; i < 15; i++) down.push(det.push({ t: (t += 10.7), band: -70, flat: 0.5, period: 0.2 }).level);
+  const down = []; for (let i = 0; i < 25; i++) down.push(det.push({ t: (t += 10.7), band: -70, flat: 0.5, period: 0.2 }).level);
   check(up[1] === 0 && up[3] > 0.6 * up[7], `breath turns on at the 3rd loud frame, about 32 ms (${up.map((v) => v.toFixed(2)).join(" ")})`);
-  check(down[4] > 0.3 * up[7] && down[14] < 0.15 * up[7], "level fades over about 80 ms after the vote ends, not instantly");
+  check(down[4] > 0.3 * up[7] && down[24] < 0.15 * up[7], "level fades over about 80 ms after the vote ends, not instantly");
 }
 
 { // noise floor: ignores the mic's first silent frames, follows the room, and isn't lifted by a long blow

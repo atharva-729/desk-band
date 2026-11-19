@@ -11,20 +11,31 @@
   body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.4 -apple-system, system-ui, sans-serif; padding:20px; }
   h1 { font-size:22px; margin:0; }
   .sub { color:var(--dim); font-size:13px; }
-  header { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; margin-bottom:16px; }
+  header { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
+  .hdr-r { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
   .wrap { display:grid; grid-template-columns:minmax(0, 1fr) 240px; gap:16px; }
   @media (max-width: 760px) { .wrap { grid-template-columns:1fr; } }
   .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px; }
-  .nums { display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; margin-bottom:16px; }
-  @media (max-width: 760px) { .nums { grid-template-columns:1fr 1fr; } }
-  .num { font-size:40px; font-weight:800; font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .play { display:grid; grid-template-columns:200px minmax(0, 1fr); gap:16px; align-items:center; margin-bottom:16px; }
+  @media (max-width: 760px) { .play { grid-template-columns:1fr; } }
+  .bignote { font-size:110px; font-weight:800; line-height:1; text-align:center; transition:color .08s; }
+  .bignote.on { color:var(--blow); }
   .lbl { color:var(--dim); font-size:12px; text-transform:uppercase; letter-spacing:.5px; display:flex; align-items:center; gap:6px; }
   .lbl i { width:10px; height:10px; border-radius:3px; display:inline-block; }
-  canvas { width:100%; height:220px; display:block; }
+  .ladder { display:grid; grid-template-columns:repeat(8, 1fr); gap:6px; margin:10px 0; }
+  .ladder div { height:56px; border-radius:10px; background:#101218; border:2px solid var(--line); display:flex; align-items:center;
+                justify-content:center; font-weight:800; font-size:18px; color:var(--dim); transition:background .06s; }
+  .ladder div.cur { background:var(--tilt); color:#101218; border-color:var(--tilt); }
+  .ladder div.cur.on { background:var(--blow); border-color:var(--blow); }
+  .meter { height:14px; background:#0a0b0e; border-radius:7px; overflow:hidden; }
+  .meter i { display:block; height:100%; width:0; background:var(--blow); }
+  canvas { width:100%; height:180px; display:block; }
   table { width:100%; border-collapse:collapse; font-size:13px; font-variant-numeric:tabular-nums; }
   td { padding:4px 0; border-bottom:1px solid var(--line); } td:last-child { text-align:right; }
   .pill { font-size:12px; padding:4px 10px; border-radius:20px; border:1px solid var(--line); color:var(--dim); }
   .pill.on { color:var(--ok); border-color:var(--ok); }
+  button { font:inherit; color:#101218; background:var(--tilt); border:0; border-radius:10px; padding:9px 16px; font-weight:700; cursor:pointer; }
+  button.ghost { color:var(--ink); background:var(--panel); border:1px solid var(--line); }
   .bad { color:var(--warn); }
   #qr svg { width:100%; height:auto; background:#fff; border-radius:8px; }
   #joinUrl { font-size:12px; color:var(--dim); word-break:break-all; margin-top:6px; }
@@ -32,19 +43,26 @@
 </head>
 <body>
   <header>
-    <div><h1>Tilt Flute</h1><div class="sub">Stage · Phase 1: signal test (no sound yet)</div></div>
-    <span class="pill" id="link">waiting for phone</span>
+    <div><h1>Tilt Flute</h1><div class="sub">Tilt the phone for the note, blow on it to play. Keys 1–8 play without the phone.</div></div>
+    <div class="hdr-r">
+      <button id="startSound">Start sound</button>
+      <button id="testSound" class="ghost">Test sound</button>
+      <span class="pill" id="link">waiting for phone</span>
+    </div>
   </header>
   <div class="wrap">
     <div>
-      <div class="nums">
-        <div class="card"><div class="lbl">Note</div><div class="num" id="step">–</div></div>
-        <div class="card"><div class="lbl"><i style="background:var(--tilt)"></i>Tilt</div><div class="num" id="pos">–</div></div>
-        <div class="card"><div class="lbl"><i style="background:var(--blow)"></i>Breath</div><div class="num" id="breath">–</div></div>
-        <div class="card"><div class="lbl">Prompt</div><div class="num" id="prompt" style="font-size:24px;line-height:48px">–</div></div>
+      <div class="card play">
+        <div><div class="bignote" id="noteBig">–</div><div class="sub" style="text-align:center" id="noteSub">&nbsp;</div></div>
+        <div>
+          <div class="ladder" id="ladder"></div>
+          <div class="lbl" style="margin-top:12px"><i style="background:var(--blow)"></i>Breath</div>
+          <div class="meter" style="margin-top:6px"><i id="breathBar"></i></div>
+          <div class="sub" style="margin-top:8px" id="modeTxt">&nbsp;</div>
+        </div>
       </div>
       <div class="card">
-        <div class="lbl">Last 8 seconds <span style="text-transform:none;letter-spacing:0">· tilt across the calibrated range (note lines), mic 50–1000 Hz on −90…0 dB, breath level</span></div>
+        <div class="lbl">Last 8 seconds <span style="text-transform:none;letter-spacing:0">· tilt across the calibrated range (note lines), breath level, mic 50–1000 Hz on −90…0 dB</span></div>
         <canvas id="trace"></canvas>
       </div>
     </div>
@@ -54,12 +72,11 @@
         <table>
           <tr><td>messages arriving</td><td id="rx">–</td></tr>
           <tr><td>longest gap (last 1 s)</td><td id="gap">–</td></tr>
-          <tr><td>lost (seq gaps)</td><td id="lost">0</td></tr>
-          <tr><td>phone orientation rate</td><td id="oriHz">–</td></tr>
-          <tr><td>phone mic frames</td><td id="audHz">–</td></tr>
           <tr><td>phone round trip</td><td id="rtt">–</td></tr>
-          <tr><td>flatness / periodicity</td><td id="fp">–</td></tr>
+          <tr><td>laptop audio output delay</td><td id="outLat">–</td></tr>
+          <tr><td>last speaker test</td><td id="spk">–</td></tr>
           <tr><td>mic / noise floor</td><td id="mic">–</td></tr>
+          <tr><td>periodicity</td><td id="per">–</td></tr>
         </table>
       </div>
       <div class="card">
@@ -70,23 +87,129 @@
     </div>
   </div>
 
+<script src="flute-core.js"></script>
 <script src="vendor/qrcode.js"></script>
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
-  const hist = []; // {t, frac, mic, level} in laptop time
-  const arrivals = [];
-  let last = null, lastSeq = 0, lost = 0;
+  const C = window.FluteCore, STEPS = 8;
 
+  // ---------- the flute voice (WebAudio, no samples) ----------
+  // A sine with a little 2nd/3rd/4th harmonic, plus band-passed noise for "air"; a 5.5 Hz vibrato whose depth comes
+  // from the off-axis turn (or a ±1 semitone bend); a ~25 ms glide between notes; loudness follows the breath level.
+  let ctx = null, master = null;
+  class Flute {
+    constructor() {
+      const t = ctx.currentTime;
+      this.osc = ctx.createOscillator();
+      this.osc.setPeriodicWave(ctx.createPeriodicWave(new Float32Array([0, 0, 0, 0, 0]), new Float32Array([0, 1, 0.18, 0.07, 0.03])));
+      this.env = ctx.createGain(); this.env.gain.value = 0;
+      this.lfo = ctx.createOscillator(); this.lfo.frequency.value = 5.5;
+      this.vib = ctx.createGain(); this.vib.gain.value = 0;
+      this.lfo.connect(this.vib); this.vib.connect(this.osc.detune);
+      const noise = ctx.createBufferSource(), buf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate), d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      noise.buffer = buf; noise.loop = true;
+      this.bp = ctx.createBiquadFilter(); this.bp.type = "bandpass"; this.bp.Q.value = 2.5;
+      this.air = ctx.createGain(); this.air.gain.value = 0.06;
+      noise.connect(this.bp); this.bp.connect(this.air); this.air.connect(this.env);
+      this.osc.connect(this.env); this.env.connect(master);
+      this.osc.start(t); this.lfo.start(t); noise.start(t);
+      this.level = 0; this.midi = null;
+    }
+    set(midi, level, vibCents = 0, bendCents = 0, at = ctx.currentTime) {
+      const f = C.midiHz(midi);
+      if (this.level < 0.01 || this.midi === null) { this.osc.frequency.setValueAtTime(f, at); this.bp.frequency.setValueAtTime(f * 2, at); }
+      else { this.osc.frequency.setTargetAtTime(f, at, 0.008); this.bp.frequency.setTargetAtTime(f * 2, at, 0.008); }
+      this.env.gain.setTargetAtTime(0.45 * Math.pow(level, 1.2), at, 0.012);
+      this.vib.gain.setTargetAtTime(vibCents, at, 0.05);
+      this.osc.detune.setTargetAtTime(bendCents, at, 0.02);
+      this.midi = midi; this.level = level;
+    }
+  }
+  let live = null, demo = null;
+  $("startSound").addEventListener("click", async () => {
+    if (!ctx) {
+      ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: "interactive" });
+      master = ctx.createGain(); master.gain.value = 0.9;
+      const comp = ctx.createDynamicsCompressor(); master.connect(comp); comp.connect(ctx.destination);
+      live = new Flute(); demo = new Flute();
+    }
+    await ctx.resume();
+    $("startSound").textContent = "Sound on"; $("startSound").classList.add("ghost");
+    const out = ((ctx.baseLatency || 0) + (ctx.outputLatency || 0)) * 1000;
+    $("outLat").textContent = out ? out.toFixed(0) + " ms" : "not reported";
+  });
+  function playPhrase(midis, noteSec, level) {
+    if (!ctx) return;
+    const t0 = ctx.currentTime + 0.02;
+    midis.forEach((m, i) => demo.set(m, level, 0, 0, t0 + i * noteSec));
+    demo.env.gain.setTargetAtTime(0, t0 + midis.length * noteSec, 0.03); demo.level = 0;
+  }
+  $("testSound").addEventListener("click", () => playPhrase([72, 74, 76, 77, 79, 81, 83, 84], 0.25, 0.7));
+  function beep() {
+    if (!ctx) return;
+    const o = ctx.createOscillator(), g = ctx.createGain(), t = ctx.currentTime;
+    o.frequency.value = 1500; g.gain.setValueAtTime(0.6, t); g.gain.setValueAtTime(0, t + 0.06);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t + 0.08);
+  }
+
+  // ---------- what's playing ----------
+  const state = { midi: null, step: null, level: 0, on: false, scale: "major", rollMode: "vibrato", off: 0 };
+  function vibratoFor(off, mode) {
+    const a = Math.abs(off || 0);
+    if (mode === "bend") return [0, Math.max(-1, Math.min(1, Math.sign(off) * Math.max(0, a - 3) / 15)) * 100];
+    return [Math.min(40, Math.max(0, a - 4) * 2), 0]; // cents of vibrato: dead zone 4°, then 2 cents per degree
+  }
+  function apply() {
+    if (live && state.midi != null) { const [v, b] = vibratoFor(state.off, state.rollMode); live.set(state.midi, state.level, v, b); }
+    else if (live) live.env.gain.setTargetAtTime(0, ctx.currentTime, 0.02);
+    window.__synth = { midi: state.midi, level: state.level, playing: !!ctx && state.level > 0 };
+  }
+  function buildLadder() {
+    $("ladder").innerHTML = Array.from({ length: STEPS }, (_, k) => `<div>${C.noteName(C.noteFor(k, state.scale)).replace(/\d+$/, (o) => (k === STEPS - 1 ? o : ""))}</div>`).join("");
+  }
+  buildLadder();
+  function drawPlay() {
+    $("noteBig").textContent = state.midi == null ? "–" : C.noteName(state.midi).replace(/\d+$/, "");
+    $("noteBig").classList.toggle("on", state.on);
+    $("noteSub").textContent = state.midi == null ? " " : `${C.noteName(state.midi)} · ${C.midiHz(state.midi).toFixed(0)} Hz`;
+    [...$("ladder").children].forEach((el, k) => { el.classList.toggle("cur", state.step === k); el.classList.toggle("on", state.step === k && state.on); });
+    $("breathBar").style.width = (state.level * 100).toFixed(0) + "%";
+    $("modeTxt").textContent = `${state.scale === "major" ? "Song mode (C major)" : "Pentatonic"} · turn the phone for ${state.rollMode === "bend" ? "a ±1 semitone bend" : "vibrato"}` +
+      (ctx ? "" : " · click Start sound to hear it");
+  }
+
+  // keys 1-8: play without the phone
+  const held = new Set();
+  document.addEventListener("keydown", (e) => {
+    const k = +e.key; if (!(k >= 1 && k <= STEPS) || e.repeat) return;
+    held.add(k); Object.assign(state, { step: k - 1, midi: C.noteFor(k - 1, state.scale), level: 0.7, on: true, off: 0 }); apply(); drawPlay();
+  });
+  document.addEventListener("keyup", (e) => {
+    const k = +e.key; if (!held.delete(k)) return;
+    if (!held.size) { Object.assign(state, { level: 0, on: false }); apply(); drawPlay(); }
+  });
+
+  // ---------- messages from the phone ----------
+  const hist = [], arrivals = [];
+  let last = null;
   const es = new EventSource("/events");
   es.onmessage = (e) => {
     const m = JSON.parse(e.data);
+    if (m.type === "ping") return beep();
+    if (m.type === "demo") return playPhrase([72, 76, 79, 84, 79, 76, 72, 74], 0.5, 0.8);
+    if (m.type === "result" && m.what === "speaker-test") { $("spk").textContent = m.median == null ? "no beeps heard" : `${m.median} ms loop · feedback ${m.feedbackPct}%`; return; }
     if (m.type !== "state") return;
     const now = performance.now();
-    if (lastSeq && m.seq > lastSeq + 1) lost += m.seq - lastSeq - 1;
-    if (m.seq < lastSeq) lost = 0; // phone page reloaded
-    lastSeq = m.seq; last = m;
-    arrivals.push(now);
+    last = m; arrivals.push(now);
+    if (!held.size) {
+      const scaleChanged = m.scale && m.scale !== state.scale;
+      Object.assign(state, { midi: m.midi, step: m.step, level: m.level || 0, on: !!m.breath, off: m.off || 0,
+        scale: m.scale || state.scale, rollMode: m.rollMode || state.rollMode });
+      if (scaleChanged) buildLadder();
+      apply(); drawPlay();
+    }
     hist.push({ t: now, frac: m.pos != null && m.span ? m.pos / m.span : null, mic: m.mic, level: m.level });
     while (hist.length && hist[0].t < now - 8000) hist.shift();
   };
@@ -96,23 +219,16 @@
     while (arrivals.length && arrivals[0] < now - 1000) arrivals.shift();
     let gap = 0;
     for (let i = 1; i < arrivals.length; i++) gap = Math.max(gap, arrivals[i] - arrivals[i - 1]);
-    const live = arrivals.length > 0;
-    $("link").textContent = live ? "phone connected" : "waiting for phone";
-    $("link").classList.toggle("on", live);
+    const on = arrivals.length > 0;
+    $("link").textContent = on ? "phone connected" : "waiting for phone";
+    $("link").classList.toggle("on", on);
+    drawPlay();
     if (!last) return;
-    $("step").textContent = last.step == null ? "–" : last.step + 1;
-    $("pos").textContent = last.pos == null ? "–" : last.pos.toFixed(0) + "°";
-    $("breath").textContent = last.breath ? "BLOW" : "–";
-    $("breath").style.color = last.breath ? "var(--blow)" : "";
-    $("prompt").textContent = last.prompt || "–";
     $("rx").textContent = arrivals.length + " /s"; $("rx").classList.toggle("bad", arrivals.length < 25);
     $("gap").textContent = arrivals.length > 1 ? Math.round(gap) + " ms" : "–";
-    $("lost").textContent = lost;
-    $("oriHz").textContent = last.oriHz + " /s";
-    $("audHz").textContent = last.audHz + " /s";
     $("rtt").textContent = last.rtt == null ? "–" : last.rtt + " ms";
-    $("fp").textContent = last.flat == null ? "–" : `${last.flat.toFixed(3)} / ${last.period.toFixed(2)}`;
     $("mic").textContent = last.mic == null ? "–" : `${last.mic.toFixed(0)} / ${last.floor == null ? "–" : last.floor.toFixed(0)} dB`;
+    $("per").textContent = last.period == null ? "–" : last.period.toFixed(2);
   }
 
   const cv = $("trace"), g = cv.getContext("2d");

@@ -25,6 +25,7 @@ CERTS = os.path.join(HERE, ".certs")
 DATA = os.environ.get("TILTFLUTE_DATA") or os.path.join(HERE, "data")  # tests point this elsewhere
 LIVE = os.path.join(DATA, "live")
 SESSIONS = os.path.join(DATA, "sessions")
+CALIB = os.path.join(DATA, "calib.json")  # lowest/highest-note gravity, so a reloaded phone is ready to play
 PHONE_URL = ""
 HTTPS_PORT = int(os.environ.get("TILTFLUTE_HTTPS_PORT", 8445))
 HTTP_PORT = int(os.environ.get("TILTFLUTE_HTTP_PORT", 8002))
@@ -140,6 +141,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._events()
         if path == "/info":
             return self._json({"phone_url": PHONE_URL})
+        if path == "/calib":
+            try:
+                with open(CALIB, encoding="utf-8") as fh:
+                    return self._json(json.load(fh))
+            except (OSError, ValueError):
+                return self._json(None)
         self.send_error(404)
 
     def _events(self):
@@ -171,6 +178,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path.split("?")[0] == "/session":
             return self._save_session()
+        if self.path.split("?")[0] == "/calib":
+            n = int(self.headers.get("Content-Length", 0))
+            try:
+                cal = json.loads(self.rfile.read(min(n, 10_000)) or b"{}")
+            except json.JSONDecodeError:
+                return self.send_error(400)
+            ok = isinstance(cal, dict) and all(isinstance(cal.get(k), list) and len(cal[k]) == 3 and
+                                               all(isinstance(v, (int, float)) for v in cal[k]) for k in ("gLow", "gHigh"))
+            if not ok:
+                return self.send_error(400)
+            os.makedirs(DATA, exist_ok=True)
+            with open(CALIB, "w", encoding="utf-8") as fh:
+                json.dump({"gLow": cal["gLow"], "gHigh": cal["gHigh"]}, fh)
+            self.send_response(204)
+            self.end_headers()
+            return
         if self.path.split("?")[0] != "/state":
             return self.send_error(404)
         n = int(self.headers.get("Content-Length", 0))

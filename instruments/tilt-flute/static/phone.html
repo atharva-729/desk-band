@@ -29,6 +29,8 @@
   td { padding:3px 0; } td:last-child { text-align:right; }
   /* the note ladder: lowest note on the left */
   .ladder { position:relative; display:grid; grid-template-columns:repeat(8, 1fr); gap:4px; margin:10px 0; }
+  .bignote { font-size:84px; font-weight:800; line-height:1; letter-spacing:-1px; }
+  select { font:inherit; color:var(--ink); background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px; }
   .ladder div { height:44px; border-radius:8px; background:#11131a; border:2px solid var(--line); display:flex;
                 align-items:center; justify-content:center; font-weight:700; color:var(--dim); }
   .ladder div.target { border-color:var(--warn); color:var(--warn); }
@@ -48,7 +50,7 @@
 </head>
 <body>
   <h1>Tilt Flute</h1>
-  <div class="sub">Phase 1: signal test. Hold it sideways like a flute.</div>
+  <div class="sub">Hold it sideways like a flute: tilt for the note, blow to play.</div>
 
   <div id="intro" class="card">
     <p style="margin-top:0">Tap Start and allow motion and the microphone.</p>
@@ -57,25 +59,31 @@
 
   <div id="main" class="hidden">
     <button id="micWarn" class="primary hidden" style="background:var(--warn);border-color:var(--warn)">Mic stopped: tap to turn it back on</button>
-    <div class="card">
-      <div class="row" style="margin:0">
-        <div><div class="lbl">Note</div><div class="num" id="step">–</div><div class="small" id="posTxt">not calibrated</div></div>
-        <div><div class="lbl">Breath</div><div class="num" id="breathTxt">–</div><div class="small" id="micTxt">–</div></div>
-      </div>
+    <div class="card" style="text-align:center">
+      <div class="bignote" id="noteBig">–</div>
+      <div class="small"><span id="step">–</span> · <span id="posTxt">not calibrated</span> · <span id="breathTxt">–</span></div>
       <div class="ladder" id="ladder"></div>
       <div class="meter"><i id="breathBar"></i></div>
+      <div class="small" id="micTxt" style="margin-top:4px">–</div>
+    </div>
+    <div class="row">
+      <select id="scale"><option value="major">Song mode (C major)</option><option value="pentatonic">Pentatonic</option></select>
+      <select id="rollMode"><option value="vibrato">Turn = vibrato</option><option value="bend">Turn = bend ±1</option></select>
     </div>
     <div class="row">
       <button id="calBtn">Calibrate</button>
-      <button id="runBtn" disabled>Full test run</button>
+      <button id="spkBtn">Speaker test</button>
     </div>
-    <button id="soundBtn" class="primary">Sound test (about 55 s, no tilt)</button>
     <div class="card hidden" id="doneCard"></div>
+    <div class="row">
+      <button id="runBtn" disabled>Full test run</button>
+      <button id="soundBtn">Sound test</button>
+    </div>
     <div class="card">
       <div class="lbl">Sensors and link</div>
       <table>
         <tr><td>phone tilt (beta) / roll (gamma)</td><td id="bg">–</td></tr>
-        <tr><td>off-axis turn (for vibrato later)</td><td id="off">–</td></tr>
+        <tr><td>off-axis turn (vibrato / bend)</td><td id="off">–</td></tr>
         <tr><td>flatness / periodicity</td><td id="fp">–</td></tr>
         <tr><td>orientation · motion · mic frames</td><td id="rates">–</td></tr>
         <tr><td>sent to laptop · round trip</td><td id="link">–</td></tr>
@@ -116,10 +124,16 @@
   let mic = null, feats = null, det = null; // mic kept referenced: WebKit can garbage-collect an unreferenced ScriptProcessorNode
   let seq = 0, inflight = 0, fails = 0, rttMs = null;
 
-  function buildLadder(el) {
-    el.innerHTML = Array.from({ length: STEPS }, (_, i) => `<div>${i + 1}</div>`).join("") + '<div class="pos"></div>';
+  let scale = "major", rollMode = "vibrato";
+  try { scale = localStorage.getItem("tiltflute.scale") || scale; rollMode = localStorage.getItem("tiltflute.roll") || rollMode; } catch {}
+  $("scale").value = scale; $("rollMode").value = rollMode;
+  const nameOf = (k) => C.noteName(C.noteFor(k, scale)).replace(/\d+$/, (o) => (k === STEPS - 1 && scale === "major" ? o : ""));
+  function buildLadder(el, names) {
+    el.innerHTML = Array.from({ length: STEPS }, (_, i) => `<div>${names ? nameOf(i) : i + 1}</div>`).join("") + '<div class="pos"></div>';
   }
-  buildLadder($("ladder")); buildLadder($("ovLadder"));
+  buildLadder($("ladder"), true); buildLadder($("ovLadder"));
+  $("scale").addEventListener("change", () => { scale = $("scale").value; try { localStorage.setItem("tiltflute.scale", scale); } catch {} buildLadder($("ladder"), true); send(); });
+  $("rollMode").addEventListener("change", () => { rollMode = $("rollMode").value; try { localStorage.setItem("tiltflute.roll", rollMode); } catch {} send(); });
   function drawLadder(el, target) {
     const cells = el.children;
     for (let i = 0; i < STEPS; i++) {
@@ -154,7 +168,7 @@
       if (!g || g.x == null) return;
       const t = performance.now();
       s.g = [g.x, g.y, g.z]; s.gs = smoother.push(s.g, t); ev.mot.push(t);
-      if (cal) { tilt = C.tiltAngles(s.gs, cal); step = stepper.update(tilt.pos); }
+      if (cal) { tilt = C.tiltAngles(s.gs, cal); const was = step; step = stepper.update(tilt.pos); if (step !== was) send(); }
       if (rec) rec.mot.push([r1(t), r3(g.x), r3(g.y), r3(g.z)]);
     });
     try { await startMic(); } catch (err) {
@@ -164,6 +178,7 @@
     try { if ("wakeLock" in navigator) await navigator.wakeLock.request("screen"); } catch {}
     $("intro").classList.add("hidden"); $("main").classList.remove("hidden");
     $("info").textContent = `${mic.label} · ${(mic.ctx.sampleRate / 1000).toFixed(1)} kHz · orientation ${oriOK ? "on" : "OFF"} · motion ${motOK ? "on" : "OFF"}`;
+    if (!cal) { try { const c = await (await fetch("/calib", { cache: "no-store" })).json(); if (c && c.gLow) cal = c; } catch {} }
     if (cal) applyCal(cal);
     setInterval(send, SEND_MS);
     setInterval(draw, 50);
@@ -184,9 +199,12 @@
     lastAudioMs = performance.now();
     proc.onaudioprocess = (e) => {
       lastAudioMs = performance.now();
+      if (listen) { const x = e.inputBuffer.getChannelData(0); let q = 0; for (let i = 0; i < x.length; i++) q += x[i] * x[i]; listen(10 * Math.log10(q / x.length + 1e-12), lastAudioMs); }
       feats.push(e.inputBuffer.getChannelData(0), performance.now(), (f) => {
         ev.aud.push(performance.now());
+        const was = s.breath.on;
         s.feat = f; s.breath = det.push(f);
+        if (s.breath.on !== was) send();
         if (rec) rec.aud.push([r1(f.t), r2(f.rms), r2(f.band), r4(f.flat), r3(f.period)]);
       });
     };
@@ -242,6 +260,7 @@
       pos: tilt && r2(tilt.pos), off: tilt && r2(tilt.off), step, span: cal && r2(cal.span),
       mic: f && r2(f.band), flat: f && r4(f.flat), period: f && r3(f.period), floor: s.breath.floor != null ? r2(s.breath.floor) : null,
       breath: s.breath.on, level: r3(s.breath.level), prompt: prompt && prompt.label,
+      midi: step == null ? null : C.noteFor(step, scale), scale, rollMode,
       oriHz: rate(ev.ori), motHz: rate(ev.mot), audHz: rate(ev.aud), rtt: rttMs, micOK: !mic || micOK(), audio: mic && mic.ctx.state };
     const t0 = performance.now();
     inflight++;
@@ -254,6 +273,8 @@
   function draw() {
     micHealth();
     $("step").textContent = step == null ? "–" : `${step + 1} / ${STEPS}`;
+    $("noteBig").textContent = step == null ? "–" : C.noteName(C.noteFor(step, scale)).replace(/\d+$/, "");
+    $("noteBig").style.color = s.breath.on ? "var(--blow)" : "";
     $("posTxt").textContent = cal ? (tilt ? `${tilt.pos.toFixed(1)}° of ${cal.span.toFixed(0)}°` : "–") : "not calibrated";
     $("breathTxt").textContent = s.breath.on ? "BLOW" : "–";
     $("breathTxt").style.color = s.breath.on ? "var(--blow)" : "";
@@ -294,6 +315,52 @@
   }
   $("ovStop").addEventListener("click", () => { stopped = true; });
 
+  // ---------- speaker test ----------
+  // 1) Latency: the laptop beeps on request; the phone hears it. Measured loop = phone -> laptop -> speaker -> air ->
+  //    phone mic, i.e. everything between a breath being detected and its sound, except the detector itself.
+  // 2) Feedback: the laptop plays the flute for 4 s while you stay quiet; any breath detected then is false.
+  let listen = null;
+  const post = (msg) => fetch("/state", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(msg) }).catch(() => {});
+  async function ping(id) {
+    const before = []; listen = (db) => before.push(db);
+    await sleep(200);
+    const base = Math.max(...before.slice(-10), -90), thr = Math.max(base + 15, -65);
+    let heard = null;
+    listen = (db, t) => { if (heard === null && db > thr) heard = t; };
+    const t0 = performance.now();
+    post({ type: "ping", id });
+    while (heard === null && performance.now() - t0 < 1000) await sleep(5);
+    listen = null;
+    return heard === null ? null : heard - t0;
+  }
+  $("spkBtn").addEventListener("click", async () => {
+    if (!micOK()) { alert("The mic isn't working. Tap the yellow button first."); return; }
+    stopped = false; overlay(true);
+    show("Speaker test", "Stay quiet", "Phone about 30 cm from the laptop speaker, volume up. Beeps first, then a short tune.", {});
+    await sleep(FAST ? 200 : 1500);
+    const lat = [];
+    for (let i = 0; i < 8 && !stopped; i++) { $("ovTop").textContent = `beep ${i + 1} of 8`; lat.push(await ping(i)); await sleep(300); }
+    $("ovTop").textContent = "flute tune (feedback check)";
+    let frames = 0, on = 0;
+    const t0 = performance.now(); post({ type: "demo" });
+    while (performance.now() - t0 < 4300 && !stopped) {
+      const n = ev.aud.length; await sleep(50);
+      if (performance.now() - t0 > 300) { frames++; if (s.breath.on) on++; }
+    }
+    overlay(false);
+    const got = lat.filter((v) => v !== null).sort((a, b) => a - b);
+    const med = got.length ? got[got.length >> 1] : null;
+    const res = { type: "result", what: "speaker-test", latencies: lat.map((v) => (v === null ? null : Math.round(v))), median: med && Math.round(med),
+      feedbackPct: frames ? Math.round((100 * on) / frames) : null, detectorMs: 21 };
+    post(res);
+    $("doneCard").classList.remove("hidden");
+    $("doneCard").textContent = med === null
+      ? "Didn't hear the laptop's beeps. Turn the laptop volume up, click Start sound on the laptop, and try again."
+      : `Loop phone → laptop → speaker → phone mic: ${Math.round(med)} ms (heard ${got.length} of 8). ` +
+        `So blow → sound ≈ ${Math.round(med) + 21} ms with the detector. ` +
+        `Flute from the speaker counted as breath: ${res.feedbackPct}% of the time${res.feedbackPct > 5 ? " (too much: use headphones on the laptop)" : " (fine)"}.`;
+  });
+
   // ---------- calibration ----------
   // Hold still at the lowest note, then the highest. Gravity is averaged over 1 s at each.
   async function capture(label) {
@@ -320,6 +387,7 @@
     const c = C.calibrate(gLow, gHigh);
     if (c.span < 15) { alert(`The two positions are only ${c.span.toFixed(0)}° apart. Try again with a bigger tilt (30–60° works well).`); return; }
     applyCal({ gLow, gHigh });
+    fetch("/calib", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ gLow, gHigh }) }).catch(() => {});
     try { localStorage.setItem("tiltflute.cal", JSON.stringify({ gLow, gHigh })); } catch {}
     $("doneCard").classList.remove("hidden");
     $("doneCard").textContent = `Calibrated: ${c.span.toFixed(0)}° from lowest to highest, so each of the ${STEPS} notes is ${(c.span / STEPS).toFixed(1)}° wide.`;

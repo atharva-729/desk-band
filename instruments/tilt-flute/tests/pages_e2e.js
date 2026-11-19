@@ -19,13 +19,18 @@ const FAKE_SENSORS = `
     window.dispatchEvent(new DeviceMotionEvent("devicemotion", { accelerationIncludingGravity: { x: g[0], y: g[1], z: g[2] } }));
   }, 1000 / 60);`;
 
-// 2 s of quiet noise (about -30 dBFS) as the fake mic, written to a temp folder (never into the repo)
+// Fake mic, looping: 1 s of a quiet room, then 1 s of "blowing" (loud low-passed noise, like breath on a mic).
+// Written to a temp folder, never into the repo.
 function noiseWav(file) {
   const sr = 48000, n = sr * 2, buf = Buffer.alloc(44 + n * 2);
   buf.write("RIFF", 0); buf.writeUInt32LE(36 + n * 2, 4); buf.write("WAVEfmt ", 8); buf.writeUInt32LE(16, 16);
   buf.writeUInt16LE(1, 20); buf.writeUInt16LE(1, 22); buf.writeUInt32LE(sr, 24); buf.writeUInt32LE(sr * 2, 28);
   buf.writeUInt16LE(2, 32); buf.writeUInt16LE(16, 34); buf.write("data", 36); buf.writeUInt32LE(n * 2, 40);
-  for (let i = 0; i < n; i++) buf.writeInt16LE(Math.round((Math.random() * 2 - 1) * 0.05 * 32767), 44 + i * 2);
+  let y = 0;
+  for (let i = 0; i < n; i++) {
+    const v = i < sr ? (Math.random() * 2 - 1) * 0.0005 : (y += 0.12 * ((Math.random() * 2 - 1) * 0.5 - y));
+    buf.writeInt16LE(Math.round(Math.max(-1, Math.min(1, v)) * 32767), 44 + i * 2);
+  }
   fs.writeFileSync(file, buf);
   return file;
 }
@@ -57,13 +62,33 @@ function noiseWav(file) {
     await phone.js("window.__turn = 20"); // 20 of 48° -> note 4 of 8
     await wait(600);
     const p = await phone.js(`({ step: step.textContent, pos: posTxt.textContent, rates: rates.textContent })`);
-    const s = await stage.js(`({ step: step.textContent, pos: pos.textContent, rx: parseInt(rx.textContent), mic: mic.textContent })`);
+    const s = await stage.js(`({ note: noteBig.textContent, rx: parseInt(rx.textContent), mic: mic.textContent })`);
     console.log("phone:", JSON.stringify(p)); console.log("stage:", JSON.stringify(s));
-    check(p.step === "4 / 8" && s.step === "4", "turned 20° of 48° shows note 4 on both pages");
+    check(p.step === "4 / 8" && s.note === "F", "turned 20° of 48° shows note 4 (F) on both pages");
     check(s.rx >= 25, `stage receives about 30 messages a second (got ${s.rx})`);
     check(/dB$/.test(s.mic), "stage shows the mic level");
     await phone.shot(path.join(out, "phone-live.png"));
     await stage.shot(path.join(out, "stage-live.png"));
+
+    // the flute: sound on, the fake "blowing" second of the mic plays F5, the quiet second stops it
+    await stage.click("#startSound");
+    const sawPlay = await stage.until("window.__synth && window.__synth.playing && window.__synth.midi === 77", 5000);
+    const sawStop = await stage.until("window.__synth && !window.__synth.playing", 5000);
+    check(sawPlay && sawStop, "blowing plays F5 on the laptop and stopping silences it");
+    const freq = await stage.js("document.getElementById('noteSub').textContent");
+    check(/F5 · 698 Hz/.test(freq) || (await stage.until("/F5 · 698 Hz/.test(document.getElementById('noteSub').textContent)", 3000)), "F5 is 698 Hz");
+    await phone.select("#scale", "pentatonic");
+    check(await stage.until(`document.getElementById("noteBig").textContent === "G"`, 3000), "pentatonic mode: note 4 becomes G");
+    await phone.select("#scale", "major");
+    const key8 = await stage.js(`(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "8" })); return JSON.stringify(window.__synth); })()`);
+    console.log("stage after key 8:", key8);
+    await stage.js(`document.dispatchEvent(new KeyboardEvent("keyup", { key: "8" }))`);
+    check(/"midi":84,"level":0.7,"playing":true/.test(key8), "key 8 plays C6 without the phone");
+    await stage.shot(path.join(out, "stage-playing.png"));
+
+    // speaker test runs end to end (headless Chrome has no speaker, so the beeps aren't really heard)
+    await phone.click("#spkBtn");
+    check(await phone.until(`/Loop|Didn't hear/.test(document.getElementById("doneCard").textContent)`, 30000), "speaker test finishes: " + (await phone.text("#doneCard")).slice(0, 60));
 
     // the mic dies (as it did on the iPhone): warning shows, a tap brings it back
     await phone.js("window.__streams.at(-1).getTracks().forEach((t) => t.stop())");

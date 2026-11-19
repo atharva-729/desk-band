@@ -185,14 +185,23 @@
       const hiss = f.flat >= o.flatMin && f.period <= o.periodMax;
       this.votes.push(loud && hiss ? 1 : 0); if (this.votes.length > o.voteK) this.votes.shift();
       this.on = this.votes.reduce((a, b) => a + b, 0) >= o.voteM;
-      const target = this.on ? Math.max(0.05, Math.min(1, (f.band - this.floor - o.margin) / o.range)) : 0;
+      const target = this.on ? Math.max(0.2, Math.min(1, (f.band - this.floor - o.margin) / o.range)) : 0; // 0.2 floor: a soft blow is still clearly heard
       const tau = target > this.level ? o.attackMs : o.releaseMs;
       this.level += (target - this.level) * (dt ? 1 - Math.exp(-dt / tau) : 1);
       return { on: this.on, level: this.level, floor: this.floor, loud, hiss };
     }
   }
 
-  const api = { fft, calibrate, tiltAngles, VecSmoother, Stepper, AudioFeatures, periodicity, BreathDetector,
+  // ---------- Scales ----------
+  // Step k of the tilt range -> a MIDI note. Song mode (full major, C5 to C6) is the default; pentatonic is the
+  // "can't sound bad" option. C5-C6 suits a flute and laptop speakers.
+  const SCALES = { major: [0, 2, 4, 5, 7, 9, 11, 12], pentatonic: [0, 2, 4, 7, 9, 12, 14, 16] };
+  const NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+  const noteFor = (step, scale = "major", root = 72) => root + SCALES[scale][Math.max(0, Math.min(SCALES[scale].length - 1, step))];
+  const noteName = (midi) => NAMES[midi % 12] + (Math.floor(midi / 12) - 1);
+  const midiHz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
+
+  const api = { SCALES, noteFor, noteName, midiHz, fft, calibrate, tiltAngles, VecSmoother, Stepper, AudioFeatures, periodicity, BreathDetector,
     BREATH_DEFAULTS, FRAME: N, HOP };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.FluteCore = api;
