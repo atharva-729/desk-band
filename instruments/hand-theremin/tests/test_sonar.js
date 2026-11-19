@@ -42,7 +42,7 @@ for (const fs of [48000, 44100]) {
     const quiet = feed(40, null);
     check(quiet.every((r) => !r.present), `${fs} Hz, block ${block}: no hand -> nothing detected`);
     const errs = [];
-    for (const cm of [5, 10, 15, 20, 30, 45, 55]) {
+    for (const cm of [2.5, 3, 4, 5, 10, 15, 20, 30, 45, 55]) {
       const r = feed(20, cm).slice(3);
       const det = r.filter((x) => x.present);
       const err = det.length ? Math.max(...det.map((x) => Math.abs(x.handCm - cm))) : Infinity;

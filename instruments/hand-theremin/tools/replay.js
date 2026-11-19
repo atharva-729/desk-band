@@ -1,5 +1,5 @@
 // Replay a saved phone session through the sonar maths (static/sonar.js) and draw the whole run.
-// Run: node tools/replay.js data/sessions/<id> [--learn-from <s>] [--png-max-width <px>]
+// Run: node tools/replay.js data/sessions/<id> [--learn-from <s>] [--min-cm <cm>] [--present-ratio <x>] [--tag <name>]
 //   <id> with or without .jsonl/.pcm. The phone saves both when "Save this session" is ticked.
 //   --learn-from s  re-learn the background at s seconds as well (to test "what if the table had been measured then").
 // Writes, next to the session (data/ is gitignored):
@@ -23,7 +23,14 @@ const live = rows.filter((r) => r.f != null);
 const events = rows.filter((r) => r.ev).sort((a, b) => a.at - b.at);
 const buf = fs.readFileSync(base + ".pcm");
 const pcm = new Int16Array(buf.buffer, buf.byteOffset, buf.length >> 1);
-const fs_ = meta.fs, s = new Sonar(fs_, meta.opts);
+// What-if settings: --min-cm <cm> (where the hand search starts), --present-ratio <x> (hand-present threshold).
+// --tag <name> keeps the outputs apart: <id>-replay-<name>.png/.json.
+const over = {};
+if (opt("--min-cm", null) != null) over.minCm = opt("--min-cm");
+if (opt("--present-ratio", null) != null) over.presentRatio = opt("--present-ratio");
+const tagI = args.indexOf("--tag"), tag = tagI > 0 ? "-" + args[tagI + 1] : "";
+const fs_ = meta.fs, s = new Sonar(fs_, { ...meta.opts, ...over });
+if (Object.keys(over).length) console.log("what-if settings:", JSON.stringify(over));
 console.log(`session ${meta.sid}: ${(pcm.length / fs_).toFixed(1)} s of audio at ${fs_} Hz, ${live.length} live frames, mic "${meta.mic}"`);
 console.log(`  ${meta.ua}`);
 
@@ -121,9 +128,9 @@ for (const m of markAt) {
   if (m.ev === "remeasure") for (let yy = 0; yy < H; yy++) put(c, yy, 230, 60, 230);
   else for (let d = 0; d < strip; d++) put(c, d, 255, 60, 60);
 }
-const pngFile = base + "-replay.png";
+const pngFile = base + "-replay" + tag + ".png";
 fs.writeFileSync(pngFile, png(W, H, img));
-fs.writeFileSync(base + "-replay.json", JSON.stringify({ meta, timeline: tl, agree: comp ? same / comp : null, remeasures, gaps }, null, 1));
+fs.writeFileSync(base + "-replay" + tag + ".json", JSON.stringify({ meta, timeline: tl, agree: comp ? same / comp : null, remeasures, gaps }, null, 1));
 console.log(`picture: ${pngFile}  (${W}x${H}, ${group > 1 ? group + " frames per pixel" : "1 frame per pixel"}, ${(s.cmPerRow * 10 / scaleY).toFixed(1)} mm per pixel row)`);
 
 function png(w, h, rgb) {

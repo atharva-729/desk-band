@@ -19,7 +19,8 @@
     chirpMs: 10,      // chirp length
     fadeMs: 2.5,      // fade in and fade out on every chirp, so it doesn't click
     maxCm: 60,        // how far up the echo map goes
-    minCm: 5,         // closer than this the direct path swamps everything, so the hand search starts here
+    minCm: 2,         // the hand search starts here (was 5: on the iPhone a hand at 2-5 cm got pinned at "5.0 cm")
+    noiseFromCm: 5,   // "typical change" (the noise the hand must beat) is measured from here up, whatever minCm is
     learnFrames: 48,  // about 1 s of "no hand" to learn the background
     presentRatio: 6,  // hand present when the strongest change is this many times the typical change
   };
@@ -94,6 +95,7 @@
     this.cmPerRow = SPEED / fs / 2 * 100;  // one sample of extra delay = this much hand distance
     this.rows = Math.ceil(o.maxCm / this.cmPerRow) + 1;
     this.minRow = Math.round(o.minCm / this.cmPerRow);
+    this.noiseRow = Math.round(o.noiseFromCm / this.cmPerRow);
 
     this.buf = new Float32Array(P); this.fill = 0;
     this.pr = new Float64Array(P); this.pi = new Float64Array(P);
@@ -205,7 +207,7 @@
       this.colRaw[i] = clamp255((db(mags[j] / dm) + 60) / 60 * 255);
       if (i >= this.minRow && cm > peak) { peak = cm; peakI = i; }
     }
-    const noise = median(this.change.subarray(this.minRow)) || 1e-12;
+    const noise = median(this.change.subarray(this.noiseRow)) || 1e-12;
     const ratio = peak / noise;
     this.present = this.present ? ratio > o.presentRatio * 0.6 : ratio > o.presentRatio;  // hysteresis
 

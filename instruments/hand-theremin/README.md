@@ -112,6 +112,20 @@ phone mic ──► cross-correlate with the chirp ──► echo profile (stren
   reading after. Fixed: it now re-measures only when you tap **Re-measure** (after a 2 s countdown). "Chirp heard" is
   judged at the speaker's own echo, and a test covers an echo twice as loud as the speaker.
 
+**Second iPhone run, 2026-11-19 (75 s saved session: book first, then hand; replay in `results/2026-11-19_book-then-hand.*`).**
+Distances are the sonar's own estimate; nothing was checked against a ruler yet.
+- **Book:** steady holds read at about 10, 14, 20 and 25 cm. Found in 100% of frames at 14 and 20 cm, about 50% at
+  10 cm, and only 10–45% at 25 cm, which is the edge of its range at this volume. A still book wobbles 0.4–1.7 cm within a second.
+- **Hand:** read from about 2 to 13.6 cm, found in 80–100% of frames there. Above about 14 cm it drops out (47%, then 4%).
+- **Below 5 cm:** the hand search started at 5 cm, so a closer hand was pinned at exactly "5.0 cm". Replaying the same
+  audio with the search starting at 2 cm gives 2.1–4.6 cm for those seconds, with no false hands when nothing was
+  there. The default is now 2 cm. (The "typical change" the hand must beat is still measured from 5 cm up; measuring it
+  lower made the book at 20 cm drop out.)
+- **Louder than the speaker:** a hand within about 8 cm echoed louder than the speaker's own sound in 40–47 of 47 frames
+  a second. The first build re-measured the table whenever that happened, so the bug fix was needed.
+- **The phone kept up:** 47 echo profiles a second, no dropped audio in 75 s, chirp heard 38–51 dB above the floor at 30%
+  volume. Peak mic level was −60 dBFS with the hand away and −51 dBFS with it close, so there's headroom to turn the volume up.
+
 ### CHECKPOINT 0
 - The echo-map check result.
 - The commands to run it.
