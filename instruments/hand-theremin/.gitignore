@@ -1,0 +1,6 @@
+data/
+.certs/
+*.wav
+*.m4a
+*.webm
+__pycache__/
