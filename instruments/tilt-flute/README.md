@@ -128,6 +128,32 @@ node tools/analyse.js data/sessions/session-A.json data/sessions/session-B.json 
 ```
 Breath thresholds are tuned on one run and tested on the other, never on the same run.
 
+**Results (iPhone, quiet room, 19 Nov).** One full run (its mic went silent, so tilt only) and two sound-only runs.
+
+| | Result | Go/no-go bar | |
+|---|---|---|---|
+| Tilt wobble while holding a note | 0.4° typical, 0.8° worst (40 ms smoothing) | under ⅓ of a note (5.7° at this run's 138° range; ~2° at 50°) | ✅ |
+| On the prompted note while holding | 100% | | ✅ |
+| Note flicker while holding | 0, with or without hysteresis | | ✅ |
+| Breath caught while blowing | **97%** (soft 97%, hard 96%) | ≥ 95% | ✅ |
+| False breath while talking | **3.7%** | < 5% | ✅ |
+| False breath in silence | 0% | | ✅ |
+| Detector delay (first loud frame → breath on) | 21 ms typical, 32 ms worst | | |
+| Orientation / motion updates | 59 /s each | | |
+
+How the breath numbers were made: settings picked on sound run A, tested on sound run B. The reverse
+(picked on B, tested on A) gives 70% blow, 4.5% talk, because run A had a 1 s lead-in and blowing often started
+1.5–2.5 s after the prompt, so a third of its "blow" frames are silence; no setting gets above 71% there. Run B (2 s
+lead-in) is the fair blow test. Talking was counting out loud with the phone at the mouth.
+
+What the breath detector ended up as: the 50–1000 Hz level more than **30 dB above the room** (the quietest level
+of the last 10 s), **periodicity under 0.85** (loud talking scored 0.94–1.0, blowing about 0.45), and breath in **3 of
+the last 5 frames** (~54 ms), which bridges dropouts inside a blow and drops short "s"/"th" bursts in speech.
+Spectral flatness was dropped: blowing on the iPhone mic is a steep low rumble, flatness ~0, the same as speech.
+
+Not tested yet: a noisy room, laptop-speaker feedback (Phase 2), Android. The mic stops whenever the page is hidden
+(screen lock, app switch): keep the screen on; the page shows a "Mic stopped" button that restarts it.
+
 ### CHECKPOINT 1
 - The numbers above for both runs.
 - A plot of angle over time with step boundaries.

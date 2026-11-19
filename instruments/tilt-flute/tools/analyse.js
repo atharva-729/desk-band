@@ -94,10 +94,10 @@ function breathDelays(d) {
 // Thresholds chosen on one run: most blow frames caught while talk stays under 5% and silence under 1%
 function tune(d) {
   let best = null;
-  for (const margin of [10, 15, 20, 25, 30, 35, 40])
-    for (const flatMin of [0, 0.02, 0.05, 0.1, 0.15, 0.2, 0.3])
-      for (const periodMax of [0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 1.01]) {
-        const o = { margin, flatMin, periodMax }, r = breathRates(d, o);
+  for (const margin of [20, 25, 30, 35, 40])
+    for (const [voteK, voteM] of [[1, 1], [3, 2], [5, 3], [5, 4], [7, 4], [7, 5], [9, 6]])
+      for (const periodMax of [0.75, 0.8, 0.85, 0.9, 1.01]) {
+        const o = { margin, flatMin: 0, periodMax, voteK, voteM }, r = breathRates(d, o);
         if (!(r.talk < 0.05) || !(r.silence < 0.01)) continue;
         if (!best || r.blow > best.r.blow || (r.blow === best.r.blow && r.talk < best.r.talk)) best = { o, r };
       }
@@ -164,6 +164,7 @@ for (const { name, d } of sessions) {
     title: `Tilt along the note axis (°), with note boundaries; shaded = "hold note k" windows`,
     lines: Array.from({ length: d.steps + 1 }, (_, k) => +(k * ti.width).toFixed(2)), shadeKinds: ["hold"] });
   const rp = replay(d, {});
+  if (!rp.length) { html += "<p>No mic data in this run.</p>"; continue; }
   html += plot(d, rp.map((r) => ({ t: r.t, v: r.level })), { key: "v", lo: 0, hi: 1,
     title: "Breath level (blue) and breath on/off (green), against prompts", shadeKinds: ["blow", "talk", "silence"],
     extra: { series: rp.map((r) => ({ t: r.t, v: r.on ? 0.97 : 0.02 })) } });
@@ -172,10 +173,11 @@ for (const { name, d } of sessions) {
     extra: { series: rp.map((r) => ({ t: r.t, v: r.floor })) } });
 }
 
-if (sessions.length >= 2) {
+const sound = sessions.filter(({ d }) => d.aud.length && d.prompts.some((p) => p.kind === "blow"));
+if (sound.length >= 2) {
   say(`\n=== breath thresholds tuned on one run, tested on another`);
-  for (let i = 0; i < sessions.length; i++) {
-    const j = (i + 1) % sessions.length, best = tune(sessions[i].d);
+  for (let i = 0; i < sound.length; i++) {
+    const sessions = sound, j = (i + 1) % sound.length, best = tune(sound[i].d);
     if (!best) { say(`  tuned on ${sessions[i].name}: no setting keeps talking under 5% and silence under 1%`); continue; }
     const r = breathRates(sessions[j].d, best.o);
     say(`  tuned on ${sessions[i].name} ${JSON.stringify(best.o)} (there: blow ${f0(100 * best.r.blow)}%, talk ${f1(100 * best.r.talk)}%)`);

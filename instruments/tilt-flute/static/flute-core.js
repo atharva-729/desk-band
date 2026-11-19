@@ -158,12 +158,14 @@
   // Breath = the 50-1000 Hz band is well above the room's noise floor AND the sound doesn't repeat at a voice pitch.
   // Tuned on the first iPhone sound run (19 Nov): loud talking had periodicity 0.94-1.0, blowing about 0.45.
   // Flatness turned out useless (blowing on the mic is a steep low rumble, flatness ~0 like speech), so flatMin is 0.
+  // A frame vote (breath in 3 of the last 5 frames, ~54 ms) bridges dropouts inside a blow and drops the short "s"/"th"
+  // bursts of speech. Picked on sound run A, tested on run B: blow 97%, talking 3.7%, silence 0%.
   // Output level 0..1 with a fast attack and a gentle release.
-  const BREATH_DEFAULTS = { margin: 30, range: 35, flatMin: 0, periodMax: 0.8, attackMs: 10, releaseMs: 80 };
+  const BREATH_DEFAULTS = { margin: 30, range: 35, flatMin: 0, periodMax: 0.85, voteK: 5, voteM: 3, attackMs: 10, releaseMs: 80 };
   class BreathDetector {
     constructor(opts = {}) {
       this.o = { ...BREATH_DEFAULTS, ...opts };
-      this.floor = null; this.level = 0; this.on = false; this.t = null;
+      this.floor = null; this.level = 0; this.on = false; this.t = null; this.votes = [];
     }
     // f: features from AudioFeatures -> { on, level, floor, loud, hiss }
     push(f) {
@@ -181,7 +183,8 @@
       if (this.floor === null) return { on: false, level: 0, floor: null, loud: false, hiss: false };
       const loud = f.band > this.floor + o.margin;
       const hiss = f.flat >= o.flatMin && f.period <= o.periodMax;
-      this.on = loud && hiss;
+      this.votes.push(loud && hiss ? 1 : 0); if (this.votes.length > o.voteK) this.votes.shift();
+      this.on = this.votes.reduce((a, b) => a + b, 0) >= o.voteM;
       const target = this.on ? Math.max(0.05, Math.min(1, (f.band - this.floor - o.margin) / o.range)) : 0;
       const tau = target > this.level ? o.attackMs : o.releaseMs;
       this.level += (target - this.level) * (dt ? 1 - Math.exp(-dt / tau) : 1);
