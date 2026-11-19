@@ -166,14 +166,20 @@
     // f: features from AudioFeatures -> { on, level, floor, loud, hiss }
     push(f) {
       const o = this.o;
-      if (this.floor === null) this.floor = f.band;
       const dt = this.t === null ? 0 : Math.max(0, f.t - this.t); this.t = f.t;
+      // Noise floor = the quietest level in the last 10 s (kept as one minimum per second). Frames of digital
+      // silence (the iPhone mic's first moments) are ignored: they once pinned the floor at -118 dB for good.
+      if (f.band > -110) {
+        const sec = Math.floor(f.t / 1000);
+        if (!this.mins || this.mins[this.mins.length - 1].s !== sec) { (this.mins = this.mins || []).push({ s: sec, v: f.band }); }
+        else this.mins[this.mins.length - 1].v = Math.min(this.mins[this.mins.length - 1].v, f.band);
+        while (this.mins[0].s <= sec - 10) this.mins.shift();
+        this.floor = Math.min(...this.mins.map((m) => m.v));
+      }
+      if (this.floor === null) return { on: false, level: 0, floor: null, loud: false, hiss: false };
       const loud = f.band > this.floor + o.margin;
       const hiss = f.flat >= o.flatMin && f.period <= o.periodMax;
       this.on = loud && hiss;
-      // noise floor: drops straight to quieter frames, creeps up slowly (about 5 s) so it follows a noisier room
-      if (f.band < this.floor) this.floor = f.band;
-      else if (!loud) this.floor += (f.band - this.floor) * (1 - Math.exp(-dt / 5000));
       const target = this.on ? Math.max(0.05, Math.min(1, (f.band - this.floor - o.margin) / o.range)) : 0;
       const tau = target > this.level ? o.attackMs : o.releaseMs;
       this.level += (target - this.level) * (dt ? 1 - Math.exp(-dt / tau) : 1);

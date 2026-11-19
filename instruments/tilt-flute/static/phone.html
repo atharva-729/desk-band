@@ -56,6 +56,7 @@
   </div>
 
   <div id="main" class="hidden">
+    <button id="micWarn" class="primary hidden" style="background:var(--warn);border-color:var(--warn)">Mic stopped: tap to turn it back on</button>
     <div class="card">
       <div class="row" style="margin:0">
         <div><div class="lbl">Note</div><div class="num" id="step">–</div><div class="small" id="posTxt">not calibrated</div></div>
@@ -90,6 +91,7 @@
     <div class="meter hidden" id="ovMeter"><i id="ovBreath"></i></div>
     <div class="bar" id="ovBar"><i id="ovBarFill"></i></div>
     <div class="rec-dot" id="ovRec"></div>
+    <button id="ovMicWarn" class="primary hidden" style="background:var(--warn);border-color:var(--warn);margin-top:12px">Mic stopped: tap to turn it back on</button>
     <button id="ovStop" style="margin-top:20px">Stop</button>
   </div>
 
@@ -173,8 +175,14 @@
     await ctx.resume();
     const src = ctx.createMediaStreamSource(stream);
     const proc = ctx.createScriptProcessor(256, 1, 1);
-    feats = new C.AudioFeatures(ctx.sampleRate); det = new C.BreathDetector();
+    feats = new C.AudioFeatures(ctx.sampleRate); if (!det) det = new C.BreathDetector();
+    ctx.onstatechange = () => { note("audio " + ctx.state); micHealth(); };
+    for (const t of stream.getAudioTracks()) {
+      t.onmute = () => note("mic muted"); t.onunmute = () => note("mic unmuted"); t.onended = () => note("mic ended");
+    }
+    lastAudioMs = performance.now();
     proc.onaudioprocess = (e) => {
+      lastAudioMs = performance.now();
       feats.push(e.inputBuffer.getChannelData(0), performance.now(), (f) => {
         ev.aud.push(performance.now());
         s.feat = f; s.breath = det.push(f);
@@ -183,7 +191,45 @@
     };
     src.connect(proc); proc.connect(ctx.destination); // output stays silent
     mic = { stream, ctx, src, proc, label: stream.getAudioTracks()[0].label || "mic" };
+    note("mic started: " + mic.label);
   }
+  // The iPhone mic sometimes goes silent (first live test: ~40 s after Start, cause unknown). Spot it, say so, and
+  // restart it from a tap: iOS only lets audio restart inside a tap.
+  let lastAudioMs = 0, fixing = false, micWasOK = true;
+  const micOK = () => !!mic && mic.ctx.state === "running" && performance.now() - lastAudioMs < 700 &&
+    mic.stream.getAudioTracks().every((t) => t.readyState === "live");
+  function micHealth() {
+    const ok = !mic || micOK();
+    if (ok !== micWasOK) { note(ok ? "mic ok again" : `mic silent (audio ${mic.ctx.state}, track ${mic.stream.getAudioTracks().map((t) => t.readyState + (t.muted ? "/muted" : "")).join(",")})`); micWasOK = ok; }
+    $("micWarn").classList.toggle("hidden", ok); $("ovMicWarn").classList.toggle("hidden", ok);
+    if (!ok && mic.ctx.state !== "running" && !fixing) mic.ctx.resume().catch(() => {});
+  }
+  async function fixMic() {
+    if (fixing || !mic || micOK()) return;
+    fixing = true;
+    try {
+      await mic.ctx.resume();
+      await new Promise((r) => setTimeout(r, 400));
+      if (!micOK()) {
+        note("restarting mic");
+        mic.stream.getTracks().forEach((t) => t.stop());
+        try { await mic.ctx.close(); } catch {}
+        await startMic();
+      }
+    } catch (err) { note("mic restart failed: " + err.message); $("info").textContent = "Mic could not restart: " + err.message + ". Reload the page."; }
+    finally { fixing = false; micHealth(); }
+  }
+  document.addEventListener("click", fixMic, true);
+  // Things that might stop the mic go into the laptop's live log (and the session file), so the cause can be found
+  const events = [];
+  function note(what) {
+    const e = { type: "event", t: Math.round(performance.now()), what };
+    events.push(e); if (rec) rec.events.push([e.t, what]);
+    fetch("/state", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(e) }).catch(() => {});
+  }
+  document.addEventListener("visibilitychange", () => note("page " + document.visibilityState));
+  window.addEventListener("orientationchange", () => note("screen rotated " + (screen.orientation ? screen.orientation.type : window.orientation)));
+  window.addEventListener("pagehide", () => note("page hidden"));
   const r1 = (v) => Math.round(v * 10) / 10, r2 = (v) => (v == null ? null : Math.round(v * 100) / 100);
   const r3 = (v) => Math.round(v * 1000) / 1000, r4 = (v) => Math.round(v * 10000) / 10000;
 
@@ -195,7 +241,7 @@
       pos: tilt && r2(tilt.pos), off: tilt && r2(tilt.off), step, span: cal && r2(cal.span),
       mic: f && r2(f.band), flat: f && r4(f.flat), period: f && r3(f.period), floor: s.breath.floor != null ? r2(s.breath.floor) : null,
       breath: s.breath.on, level: r3(s.breath.level), prompt: prompt && prompt.label,
-      oriHz: rate(ev.ori), motHz: rate(ev.mot), audHz: rate(ev.aud), rtt: rttMs };
+      oriHz: rate(ev.ori), motHz: rate(ev.mot), audHz: rate(ev.aud), rtt: rttMs, micOK: !mic || micOK(), audio: mic && mic.ctx.state };
     const t0 = performance.now();
     inflight++;
     fetch("/state", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(msg) })
@@ -205,12 +251,13 @@
   }
 
   function draw() {
+    micHealth();
     $("step").textContent = step == null ? "–" : `${step + 1} / ${STEPS}`;
     $("posTxt").textContent = cal ? (tilt ? `${tilt.pos.toFixed(1)}° of ${cal.span.toFixed(0)}°` : "–") : "not calibrated";
     $("breathTxt").textContent = s.breath.on ? "BLOW" : "–";
     $("breathTxt").style.color = s.breath.on ? "var(--blow)" : "";
     const f = s.feat;
-    $("micTxt").textContent = f ? `${f.band.toFixed(0)} dB (floor ${s.breath.floor.toFixed(0)})` : "–";
+    $("micTxt").textContent = f ? `${f.band.toFixed(0)} dB (floor ${s.breath.floor == null ? "–" : s.breath.floor.toFixed(0)})` : "–";
     $("breathBar").style.width = $("ovBreath").style.width = (s.breath.level * 100).toFixed(0) + "%";
     drawLadder($("ladder"), null);
     $("bg").textContent = s.beta == null ? "–" : `${s.beta.toFixed(1)}° / ${s.gamma.toFixed(1)}°`;
@@ -231,12 +278,14 @@
     if (opts.ladder) drawLadder($("ovLadder"), opts.target ?? null);
   }
   // Runs the bar for `ms`; `recording` turns it green. Resolves early (false) if Stop was pressed.
+  let needMic = false;
   async function timed(ms, recording) {
     $("ovBar").classList.toggle("rec", recording);
     $("ovRec").textContent = recording ? "● recording" : "get ready…"; $("ovRec").classList.toggle("on", recording);
     const t0 = performance.now();
     while (performance.now() - t0 < ms) {
       if (stopped) return false;
+      if (needMic && !micOK()) return "mic";
       $("ovBarFill").style.width = (((performance.now() - t0) / ms) * 100).toFixed(1) + "%";
       await sleep(30);
     }
@@ -297,9 +346,11 @@
   };
   $("runBtn").addEventListener("click", async () => {
     if (!cal) return;
-    stopped = false; overlay(true);
+    if (!micOK()) { alert("The mic isn't working. Tap the yellow button first."); return; }
+    stopped = false; overlay(true); needMic = true;
     const prompts = makePrompts();
-    rec = { mot: [], ori: [], aud: [], prompts: [] };
+    rec = { mot: [], ori: [], aud: [], prompts: [], events: [] };
+    let redone = 0;
     const started = new Date().toISOString(), t0 = performance.now();
     for (let i = 0; i < prompts.length && !stopped; i++) {
       const q = prompts[i];
@@ -308,17 +359,22 @@
       if (q.kind === "hold") show(top, `Go to note ${q.step + 1}`, "then hold it there", { ladder: true, target: q.step });
       else show(top, TEXT[q.label][0], TEXT[q.label][1], { meter: true });
       const tShow = performance.now();
-      if (!(await timed(q.prep, false))) break;
-      const tRec = performance.now();
-      if (!(await timed(q.rec, true))) break;
+      let a = await timed(q.prep, false), tRec = performance.now(), b = a === true ? await timed(q.rec, true) : a;
+      if (a === "mic" || b === "mic") {
+        // the mic stopped: wait for it to be back (tap the yellow button), then do this prompt again
+        show(top, "Mic stopped", "Tap the yellow button to turn it back on", {});
+        while (!micOK() && !stopped) await sleep(100);
+        redone++; i--; continue;
+      }
+      if (!a || !b) break;
       rec.prompts.push({ label: q.label, kind: q.kind, step: q.step ?? null, tShow: r1(tShow), tRecStart: r1(tRec), tRecEnd: r1(performance.now()) });
     }
-    prompt = null;
+    prompt = null; needMic = false;
     const done = rec.prompts.length;
     const data = { version: 1, started, complete: done === prompts.length, t0: r1(t0), tEnd: r1(performance.now()),
       steps: STEPS, hyst: HYST, smoothMs: SMOOTH_MS, cal: { gLow: cal.gLow, gHigh: cal.gHigh, span: r2(cal.span) },
       breathDefaults: C.BREATH_DEFAULTS, sampleRate: mic.ctx.sampleRate, mic: mic.label, ua: navigator.userAgent,
-      prompts: rec.prompts, mot: rec.mot, ori: rec.ori, aud: rec.aud };
+      redone, events: rec.events, prompts: rec.prompts, mot: rec.mot, ori: rec.ori, aud: rec.aud };
     rec = null;
     show("", "Saving…", "", {});
     let msg;

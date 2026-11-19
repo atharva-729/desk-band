@@ -94,5 +94,17 @@ const gen = {
   check(down[2] > 0.3 * up[4] && down[14] < 0.15 * up[4], "level fades over about 80 ms, not instantly");
 }
 
+{ // noise floor: ignores the mic's first silent frames, follows the room, and isn't lifted by a long blow
+  const det = new C.BreathDetector(); let t = 0, d;
+  for (let i = 0; i < 20; i++) d = det.push({ t: (t += 10.7), band: -160, flat: 0.5, period: 0.2 });
+  check(d.floor === null && !d.on, "digital silence at start doesn't set a floor");
+  for (let i = 0; i < 300; i++) d = det.push({ t: (t += 10.7), band: -70 + (i % 5), flat: 0.5, period: 0.2 });
+  check(near(d.floor, -70, 0.01), `floor is the room's level (${d.floor})`);
+  for (let i = 0; i < 560; i++) d = det.push({ t: (t += 10.7), band: -35, flat: 0.4, period: 0.2 }); // 6 s blow
+  check(near(d.floor, -70, 0.01) && d.on, "a 6 s blow keeps the floor and stays detected");
+  for (let i = 0; i < 1400; i++) d = det.push({ t: (t += 10.7), band: -55, flat: 0.5, period: 0.2 }); // room got noisier
+  check(near(d.floor, -55, 0.01), "floor follows a noisier room within about 10 s");
+}
+
 console.log(failed ? `\n${failed} check(s) failed` : "\nall checks passed");
 process.exit(failed ? 1 : 0);

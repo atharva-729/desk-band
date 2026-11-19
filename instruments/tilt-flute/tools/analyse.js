@@ -138,6 +138,8 @@ const say = (s = "") => { console.log(s); text += s + "\n"; };
 for (const { name, d } of sessions) {
   const ti = tiltStats(d), br = breathRates(d, {}), ft = featureTable(d), dl = breathDelays(d);
   say(`\n=== ${name} ${d.complete ? "" : "(stopped early)"} · ${d.prompts.length} prompts · mic: ${d.mic} @ ${d.sampleRate} Hz`);
+  if (d.events && d.events.length) say(`events: ${d.events.map(([t, w]) => `${f1((t - d.t0) / 1000)} s ${w}`).join(" · ")}${d.redone ? ` (${d.redone} prompt(s) redone)` : ""}`);
+  if (!d.aud.length) say("NO MIC DATA in this run: the mic was silent the whole time");
   say(`rates: orientation ${f0(rateHz(d.ori.map((r) => r[0])))} /s, motion ${f0(rateHz(d.mot.map((r) => r[0])))} /s, mic frames ${f0(rateHz(d.aud.map((r) => r[0])))} /s`);
   say(`range ${f1(ti.span)}°, note width ${f1(ti.width)}° (go/no-go: jitter under ${f1(ti.width / 3)}°)`);
   for (const ms of [0, 40, 100])

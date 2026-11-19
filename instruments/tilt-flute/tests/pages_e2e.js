@@ -8,6 +8,9 @@ const { launch, startServer, wait } = require("./cdp");
 // turned; the test sets it. A small wobble is added so the numbers move.
 const FAKE_SENSORS = `
   window.__turn = 0;
+  window.__streams = [];
+  const gum = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+  navigator.mediaDevices.getUserMedia = async (c) => { const st = await gum(c); window.__streams.push(st); return st; };
   setInterval(() => {
     const t = performance.now() / 1000, r = Math.PI / 180;
     const turn = (window.__turn + 0.6 * Math.sin(t * 3)) * r, lift = 3 * Math.sin(t * 1.3) * r;
@@ -61,6 +64,13 @@ function noiseWav(file) {
     check(/dB$/.test(s.mic), "stage shows the mic level");
     await phone.shot(path.join(out, "phone-live.png"));
     await stage.shot(path.join(out, "stage-live.png"));
+
+    // the mic dies (as it did on the iPhone): warning shows, a tap brings it back
+    await phone.js("window.__streams.at(-1).getTracks().forEach((t) => t.stop())");
+    check(await phone.until(`!document.getElementById("micWarn").classList.contains("hidden")`, 3000), "a stopped mic shows the warning");
+    await phone.click("#micWarn");
+    check(await phone.until(`document.getElementById("micWarn").classList.contains("hidden")`, 5000), "tapping the warning restarts the mic");
+    check(await phone.until(`parseInt(document.getElementById("rates").textContent.split("·")[2]) > 50`, 3000), "mic frames flow again after the restart");
 
     // a fast test run (prompts shortened by ?fast)
     await phone.click("#runBtn");
