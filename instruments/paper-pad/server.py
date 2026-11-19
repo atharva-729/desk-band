@@ -203,6 +203,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if msg.get("type") == "phone":
             global last_phone
             last_phone = line
+        else:  # every hit and self-test result is kept on the laptop, so a session can be checked afterwards
+            os.makedirs(DATA, exist_ok=True)
+            with log_lock, open(os.path.join(DATA, f"events-{time.strftime('%Y-%m-%d')}.jsonl"), "a", encoding="utf-8") as fh:
+                fh.write(line + "\n")
         broadcast(line)
         self._no_content()
 

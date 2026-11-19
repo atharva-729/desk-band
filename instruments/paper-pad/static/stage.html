@@ -72,6 +72,10 @@
         <li>Start sensors, then tap the paper.</li>
       </ol>
     </div>
+    <div class="card hidden" id="stCard">
+      <h3>Self-test result</h3>
+      <div id="stLines" style="font-size:13px;white-space:pre-line"></div>
+    </div>
     <div class="card">
       <h3>Phone</h3>
       <div class="kv">
@@ -141,7 +145,7 @@
     const r = document.createElement("div"); r.className = "ring"; $("paper").appendChild(r); setTimeout(() => r.remove(), 650);
     knock(m.vel || 0.6);
     const tr = document.createElement("tr");
-    const cells = [new Date().toLocaleTimeString(), m.kind === "test" ? "test hit" : "sound", `${Math.round((m.vel || 0) * 100)}%`, m.kind === "test" ? "—" : `${m.delay} ms`];
+    const cells = [new Date().toLocaleTimeString(), m.kind === "test" ? "test hit" : m.prompt ? `sound (self-test: ${m.prompt}${m.phase === "now" ? "" : ", " + m.phase})` : "sound", `${Math.round((m.vel || 0) * 100)}%`, m.kind === "test" ? "—" : `${m.delay} ms`];
     for (const c of cells) { const td = document.createElement("td"); td.textContent = c; tr.appendChild(td); }
     $("rows").prepend(tr);
     while ($("rows").children.length > 10) $("rows").lastChild.remove();
@@ -154,6 +158,7 @@
   es.onmessage = (e) => {
     const m = JSON.parse(e.data);
     if (m.type === "phone") phoneStatus(m);
+    if (m.type === "selftest") { $("stCard").classList.remove("hidden"); $("stLines").textContent = (m.summary || []).join("\n"); }
     if (m.type === "hit") { lastBeat = lastBeat || performance.now(); onHit(m); }
   };
 })();

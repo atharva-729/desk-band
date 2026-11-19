@@ -26,6 +26,11 @@
   .hits { font-size:44px; font-weight:900; text-align:center; padding:8px 0 0; transition:color .25s; }
   .hits.flash { color:var(--accent); transition:none; }
   .hidden { display:none !important; }
+  .prompt { text-align:center; padding:14px 0 6px; }
+  .prompt .what { font-size:30px; font-weight:900; line-height:1.15; }
+  .prompt .when { font-size:18px; font-weight:700; margin:6px 0 2px; color:var(--dim); }
+  .prompt.now .what, .prompt.now .when { color:var(--accent); }
+  #stResult { margin-top:6px; white-space:pre-line; }
 </style>
 </head>
 <body>
@@ -52,7 +57,15 @@
     <div class="status">Tap the paper: every sharp sound the phone hears is sent to the laptop. Or press the button.</div>
     <div class="hits" id="hits">0</div>
     <div class="status" style="text-align:center">sounds heard</div>
-    <div class="row"><button id="test" class="primary">Send test hit</button></div>
+    <div class="row"><button id="test">Send test hit</button></div>
+  </div>
+
+  <div class="card">
+    <div class="big">Self-test (about 1 minute)</div>
+    <div class="status" id="stHint">The phone tells you what to do, one touch at a time, and counts how many hits each touch makes. Keep the phone flat; touch the paper, not the phone.</div>
+    <div id="stPrompt" class="prompt hidden"><div class="what" id="stWhat"></div><div class="when" id="stWhen"></div><div class="status" id="stLeft"></div></div>
+    <div class="row"><button id="stGo" class="primary">Start self-test</button></div>
+    <div id="stResult" class="status"></div>
   </div>
   <div class="status" id="net"></div>
 </div>
@@ -177,9 +190,70 @@
     $("hits").textContent = heard;
     $("hits").classList.add("flash"); setTimeout(() => $("hits").classList.remove("flash"), 90);
     const vel = Math.max(0.15, Math.min(1, Math.log10(h.peakAmp / h.thr + 1) / 1.3));
-    send({ type: "hit", kind: "sound", vel: +vel.toFixed(3), delay: Math.round(performance.now() - h.wallMs), n: heard });
+    const tag = st ? { prompt: st.cur ? st.cur.kind : null, phase: st.phase, step: st.i } : {};
+    if (st && st.cur) (st.phase === "now" ? st.cur.hits : st.cur.early).push(+(h.peakAmp / h.thr).toFixed(2));
+    send({ type: "hit", kind: "sound", vel: +vel.toFixed(3), delay: Math.round(performance.now() - h.wallMs), n: heard, ...tag });
   }
   $("test").addEventListener("click", () => send({ type: "hit", kind: "test", vel: 0.8, delay: 0 }));
+
+  // ---------- self-test: prompted touches, so we know what each touch produces (labels come only from the prompt) ----------
+  // Each prompt: 1.2 s "get ready", then the touch window. Sounds are counted against the prompt that was showing.
+  const SPEED = /[?&]fast=1/.test(location.search) ? 0.25 : 1; // tests run it quicker
+  const TOUCH = {
+    tap:     { say: "Tap once",        how: "one fingertip knock on the paper", ms: 1800, n: 6 },
+    flick:   { say: "Flick once",      how: "one fingernail flick on the paper", ms: 1800, n: 6 },
+    scratch: { say: "Scratch",         how: "drag a fingernail across the paper", ms: 3000, n: 2 },
+    rub:     { say: "Rub",             how: "rub the paper back and forth with your fingers", ms: 3000, n: 2 },
+  };
+  let st = null;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms * SPEED));
+  $("stGo").addEventListener("click", async () => {
+    if (st) { st.stop = true; return; }
+    const order = [];
+    for (const [kind, t] of Object.entries(TOUCH)) for (let i = 0; i < t.n; i++) order.push(kind);
+    for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
+    st = { i: 0, phase: "ready", cur: null, done: [], stop: false };
+    $("stGo").textContent = "Stop"; $("stGo").classList.remove("primary"); $("stResult").textContent = "";
+    $("stPrompt").classList.remove("hidden");
+    await sleep(900); // the button press itself is loud
+    for (const kind of order) {
+      if (st.stop) break;
+      const t = TOUCH[kind];
+      st.cur = { kind, hits: [], early: [] }; st.phase = "ready";
+      $("stPrompt").classList.remove("now");
+      $("stWhat").textContent = t.say; $("stWhen").textContent = "get ready…";
+      $("stLeft").textContent = `${t.how} · ${order.length - st.i} left`;
+      await sleep(1200);
+      if (st.stop) break;
+      st.phase = "now"; $("stPrompt").classList.add("now");
+      $("stWhen").textContent = kind === "tap" || kind === "flick" ? "now" : `now, for ${t.ms / 1000} s`;
+      await sleep(t.ms);
+      st.phase = "after"; await sleep(250); // let the last sound of the touch arrive
+      st.done.push(st.cur); st.i++;
+    }
+    const done = st.done; st = null;
+    $("stPrompt").classList.add("hidden");
+    $("stGo").textContent = "Start self-test again"; $("stGo").classList.add("primary");
+    if (done.length) report(done);
+  });
+  function report(done) {
+    const by = {};
+    for (const d of done) (by[d.kind] = by[d.kind] || []).push(d.hits.length);
+    const lines = [];
+    for (const kind of Object.keys(TOUCH)) {
+      const c = by[kind]; if (!c) continue;
+      if (kind === "tap" || kind === "flick") {
+        const once = c.filter((n) => n === 1).length, miss = c.filter((n) => n === 0).length, more = c.filter((n) => n > 1).length;
+        lines.push(`${TOUCH[kind].say}: heard exactly once ${once} of ${c.length}` + (miss ? ` · missed ${miss}` : "") + (more ? ` · counted 2+ times ${more} (${c.filter((n) => n > 1).join(", ")})` : ""));
+      } else {
+        lines.push(`${TOUCH[kind].say} ${TOUCH[kind].ms / 1000} s: ${c.join(" and ")} hits`);
+      }
+    }
+    const early = done.reduce((a, d) => a + d.early.length, 0);
+    if (early) lines.push(`Sounds during "get ready" (not asked for): ${early}`);
+    $("stResult").textContent = lines.join("\n");
+    send({ type: "selftest", results: done, summary: lines });
+  }
 
   // ---------- network ----------
   let sent = 0, failed = 0;

@@ -42,7 +42,7 @@ function fakeTaps(file) {
     await stage.click("#sound");
     check(await stage.until(`window.__snd >= 1`, 2000), "stage: sound starts after the click");
 
-    const phone = await browser.page(srv.phone, { width: 390, height: 844, mobile: true });
+    const phone = await browser.page(srv.phone + "?fast=1", { width: 390, height: 844, mobile: true });
     await phone.click("#start");
     check(await phone.until(`!document.getElementById("main").classList.contains("hidden")`), "phone: sensors start (fake mic)");
     check(await stage.until(`document.getElementById("connText").textContent === "phone connected"`, 5000), "stage: shows phone connected");
@@ -58,6 +58,15 @@ function fakeTaps(file) {
     check(await stage.until(`[...document.querySelectorAll("#rows tr")].filter((tr) => tr.children[1].textContent === "sound").length >= 3`, 4000), "heard taps reach the stage");
     const delays = await stage.js(`[...document.querySelectorAll("#rows tr")].filter((tr) => tr.children[1].textContent === "sound").map((tr) => parseInt(tr.children[3].textContent))`);
     check(delays.length && delays.every((d) => d >= 0 && d < 200), `phone listening delay per tap: ${delays.join(", ")} ms`);
+
+    // self-test (run 4x faster via ?fast=1): prompts finish, a summary shows on both pages, the laptop keeps a log
+    await phone.click("#stGo");
+    check(await phone.until(`document.getElementById("stResult").textContent.includes("Tap once")`, 40000), "phone: self-test finishes with a summary");
+    check(await stage.until(`!document.getElementById("stCard").classList.contains("hidden")`, 3000), "stage: shows the self-test result");
+    const logs = fs.readdirSync(srv.data).filter((f) => f.startsWith("events-"));
+    const lines = logs.length ? fs.readFileSync(path.join(srv.data, logs[0]), "utf8").trim().split("\n").map(JSON.parse) : [];
+    check(lines.some((l) => l.type === "selftest") && lines.some((l) => l.prompt), `server: event log written (${lines.length} lines, hits tagged with their prompt)`);
+    console.log("     " + (await phone.text("#stResult")).replace(/\n/g, "\n     "));
 
     await wait(300);
     await phone.shot(path.join(OUT, "paper-pad-phone.png"));
