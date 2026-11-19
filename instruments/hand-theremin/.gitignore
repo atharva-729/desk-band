@@ -3,4 +3,5 @@ data/
 *.wav
 *.m4a
 *.webm
+*.pcm
 __pycache__/

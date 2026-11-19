@@ -44,6 +44,8 @@
   <div id="intro" class="card">
     <p style="margin-top:0">Lay the phone <b>flat on the table, screen up</b>. Turn the volume up and silent mode off.</p>
     <p>Tap Start. The phone plays a very high, quiet chirp and listens for its echo off your hand, like a bat.</p>
+    <p>Play with your hand over the <b>bottom edge</b> of the phone (the speaker grille end): that's where the speaker
+      and the mic are.</p>
     <p class="small">Most adults can't hear 18–21 kHz, but some people (especially younger ones) and pets can. If it
       bothers anyone, tap Stop. Don't use headphones.</p>
     <button id="start">Start sonar</button>
@@ -62,7 +64,8 @@
         <button id="mRaw">Everything heard</button>
       </div>
       <div class="small" id="mapHelp" style="margin-top:6px"></div>
-      <div class="row"><button class="ghost" id="relearn">Re-measure table (hand away)</button></div>
+      <div class="row"><button class="ghost" id="relearn">Re-measure table</button></div>
+      <div class="small">Takes 2 s to let you move your hand away, then 1 s to measure. Only re-measures when you tap it.</div>
     </div>
     <div class="card">
       <div class="lbl">Sonar volume <span id="volTxt"></span></div>
@@ -79,8 +82,13 @@
         <tr><td>sent to laptop</td><td id="sendHz">–</td></tr>
         <tr><td>round trip</td><td id="rtt">–</td></tr>
         <tr><td>failed sends</td><td id="fails">0</td></tr>
-        <tr><td>table re-measured (auto)</td><td id="relearns">0</td></tr>
+        <tr><td>table re-measured</td><td id="relearns">0</td></tr>
+        <tr><td>mic audio behind the clock</td><td id="behind">–</td></tr>
+        <tr><td>session saved on laptop</td><td id="saved">–</td></tr>
       </table>
+      <label class="small" style="display:flex;gap:8px;align-items:center;margin-top:8px">
+        <input type="checkbox" id="save" checked> Save this session on the laptop for analysis (readings and mic
+        audio; stays in the laptop's data folder, never uploaded or committed)</label>
       <div class="small" id="info"></div>
     </div>
   </div>
@@ -93,6 +101,7 @@
   const $ = (id) => document.getElementById(id);
   const SIM = new URLSearchParams(location.search).has("sim"); // tests only: a pretend mic with a pretend hand
   const SEND_MS = 33;
+  const SAVE_MS = 1000;      // how often the session log and audio go to the laptop
   let run = null;           // everything for one Start..Stop
   let mode = "change";
   const help = {
@@ -108,7 +117,7 @@
   const volGain = () => { const v = +$("vol").value / 100; return v * v; }; // slider feels more even squared
   $("vol").oninput = () => {
     $("volTxt").textContent = `· ${$("vol").value}%`;
-    if (run) run.gain.gain.setTargetAtTime(volGain(), run.ctx.currentTime, 0.05);
+    if (run) { run.gain.gain.setTargetAtTime(volGain(), run.ctx.currentTime, 0.05); logEv(run, { ev: "vol", v: +$("vol").value }); }
   };
   $("vol").oninput();
 
@@ -151,15 +160,27 @@
     const proc = ctx.createScriptProcessor(1024, 1, 1);
     const sim = SIM ? Sonar.Simulator(sonar, { start: 300, hand: 0.004 }) : null;
     const r = { ctx, stream, src, gain, proc, sonar, sim, mic: null, last: null, pending: [], frames: [], sent: [],
-      seq: 0, inflight: 0, fails: 0, rtt: null, learntAt: null };
+      seq: 0, inflight: 0, fails: 0, rtt: null, learntAt: null,
+      sid: sessionId(), t0: performance.now(), at: 0, ct0: null, clockAt: 0, behind: 0, log: [], audio: [], audioAt: 0, savedKB: 0, saveFails: 0 };
     proc.onaudioprocess = (e) => {
-      const x = sim ? sim.next(e.inputBuffer.length, simHand(r)) : e.inputBuffer.getChannelData(0);
+      const len = e.inputBuffer.length;
+      // Mic blocks are exactly one chirp period long, so even a dropped block keeps the echo map lined up with the
+      // table. To spot drops anyway: compare the samples received with the audio clock, and log it once a second.
+      if (r.ct0 == null) r.ct0 = ctx.currentTime;
+      r.behind = (ctx.currentTime - r.ct0) * ctx.sampleRate - r.at;
+      if (r.at - r.clockAt >= ctx.sampleRate) { r.clockAt = r.at; logEv(r, { ev: "clock", ct: +ctx.currentTime.toFixed(4), behind: Math.round(r.behind) }); }
+      const x = sim ? sim.next(len, simHand(r)) : e.inputBuffer.getChannelData(0);
+      if (!r.audio.length) r.audioAt = r.at;
+      const pcm = new Int16Array(len);
+      for (let i = 0; i < len; i++) { const v = x[i] * 32767; pcm[i] = v > 32767 ? 32767 : v < -32768 ? -32768 : v; }
+      r.audio.push(pcm);
       sonar.push(x, (res) => onFrame(r, res));
+      r.at += len;
     };
     if (stream) { r.mic = ctx.createMediaStreamSource(stream); r.mic.connect(proc); }
     proc.connect(ctx.destination); // output stays silent; WebKit needs it connected to run
     r.map = new Sonar.EchoMap($("map"), sonar.rows, sonar.cmPerRow, 380);
-    r.timers = [setInterval(() => send(r), SEND_MS), setInterval(() => drawNums(r), 150)];
+    r.timers = [setInterval(() => send(r), SEND_MS), setInterval(() => drawNums(r), 150), setInterval(() => save(r), SAVE_MS)];
     const frame = () => { if (run !== r) return; r.map.draw(mode); requestAnimationFrame(frame); };
     run = r;
     window.__ht = r; // for tests
@@ -169,7 +190,9 @@
     const label = stream ? stream.getAudioTracks()[0].label || "mic" : "simulated mic";
     $("rate").textContent = (ctx.sampleRate / 1000).toFixed(1) + " kHz";
     $("rate").classList.toggle("bad", ctx.sampleRate < 44100);
-    $("info").textContent = `${label} · chirp ${sonar.o.f0 / 1000}–${sonar.o.f1 / 1000} kHz, ${sonar.o.chirpMs} ms, every ${(sonar.P / ctx.sampleRate * 1000).toFixed(1)} ms · 1 row = ${(sonar.cmPerRow * 10).toFixed(1)} mm`;
+    r.log.push({ type: "meta", sid: r.sid, fs: ctx.sampleRate, opts: sonar.o, P: sonar.P, rows: sonar.rows,
+      cmPerRow: sonar.cmPerRow, mic: label, sim: !!sim, vol: +$("vol").value, ua: navigator.userAgent, started: new Date().toISOString() });
+    $("info").textContent = `${label} · session ${r.sid} · chirp ${sonar.o.f0 / 1000}–${sonar.o.f1 / 1000} kHz, ${sonar.o.chirpMs} ms, every ${(sonar.P / ctx.sampleRate * 1000).toFixed(1)} ms · 1 row = ${(sonar.cmPerRow * 10).toFixed(1)} mm`;
   }
 
   // ?sim only: hand away while the table is learnt, then 10, 20, 30 cm holds, away, and a slow sweep
@@ -181,8 +204,38 @@
     return 17.5 + 12.5 * Math.sin((t - 8) / 4 * 2 * Math.PI);
   }
 
+  function sessionId() {
+    const d = new Date(), p = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}${SIM ? "_sim" : ""}`;
+  }
+  const r1 = (v) => (v == null ? null : Math.round(v * 10) / 10);
+  function logEv(r, ev) { r.log.push({ ...ev, t: Math.round(performance.now() - r.t0), at: r.at }); }
+
+  // Send what's been logged and recorded since last time. Audio goes by sample position, so a lost upload leaves
+  // a silent hole rather than shifting everything after it.
+  function save(r, final) {
+    if (!$("save").checked) { r.log.length = 0; r.audio.length = 0; return; }
+    const q = `s=${encodeURIComponent(r.sid)}`;
+    if (r.log.length) {
+      const body = JSON.stringify(r.log.splice(0));
+      fetch(`/log?${q}`, { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: !!final })
+        .catch(() => r.saveFails++);
+    }
+    if (r.audio.length) {
+      const n = r.audio.reduce((a, c) => a + c.length, 0), all = new Int16Array(n);
+      let o = 0;
+      for (const c of r.audio.splice(0)) { all.set(c, o); o += c.length; }
+      fetch(`/audio?${q}&at=${r.audioAt}`, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: all.buffer })
+        .then((x) => { if (!x.ok) throw new Error(x.status); r.savedKB += n * 2 / 1024; })
+        .catch(() => r.saveFails++);
+    }
+  }
+
   function onFrame(r, res) {
     r.frames.push(performance.now());
+    r.log.push({ f: r.sonar.frames, t: Math.round(performance.now() - r.t0), at: r.at, L: res.learning ? 1 : 0, g: res.glitch ? 1 : 0,
+      snr: r1(res.snrDb), dir: r1(res.directDb), best: res.best, D: res.direct, ratio: r1(res.ratio), pk: r1(res.peakCm),
+      h: r1(res.handCm), mic: r1(20 * Math.log10(res.micPeak + 1e-9)) });
     if (!res.learning && r.learntAt == null) r.learntAt = performance.now();
     if (res.learning) r.learntAt = null;
     res.simCm = r.sim ? simHand(r) : undefined;
@@ -199,7 +252,7 @@
     const msg = { type: "state", seq: ++r.seq, t: Math.round(performance.now()), fs: r.ctx.sampleRate, rows: r.sonar.rows,
       cmPerRow: r.sonar.cmPerRow, learning: l.learning, hand: l.handCm, present: l.present, ratio: +l.ratio.toFixed(1),
       snr: +l.snrDb.toFixed(1), direct: +l.directDb.toFixed(1), micPeak: +l.micPeak.toFixed(3), clip: l.clip,
-      fps: rate(r.frames), relearns: r.sonar.relearns, rtt: r.rtt, vol: +$("vol").value, sim: !!r.sim, cols };
+      fps: rate(r.frames), relearns: r.sonar.relearns, behind: Math.round(r.behind / r.ctx.sampleRate * 1000), rtt: r.rtt, vol: +$("vol").value, sim: !!r.sim, cols };
     const t0 = performance.now();
     r.inflight++;
     fetch("/state", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(msg) })
@@ -212,8 +265,9 @@
     const l = r.last;
     if (!l) return;
     const heard = l.snrDb >= Sonar.HEARD_DB;
-    $("status").textContent = l.learning ? "Keep your hand away: measuring the empty table…"
-      : !heard ? "Can't hear the chirp: volume up, silent mode off" : "Ready: hold your hand above the phone";
+    $("status").textContent = r.countdown ? `Take your hand away… ${r.countdown}`
+      : l.learning ? "Keep your hand away: measuring the empty table…"
+      : !heard ? "Can't hear the chirp: volume up, silent mode off" : "Ready: hand above the bottom edge of the phone";
     $("status").classList.toggle("learn", l.learning || !heard);
     $("hand").textContent = l.learning ? "–" : l.handCm == null ? "no hand" : l.handCm.toFixed(1) + " cm";
     $("hand").classList.toggle("off", l.handCm == null);
@@ -227,15 +281,37 @@
     $("rtt").textContent = r.rtt == null ? "–" : r.rtt + " ms";
     $("fails").textContent = r.fails;
     $("relearns").textContent = r.sonar.relearns;
+    const ms = r.behind / r.ctx.sampleRate * 1000;
+    $("behind").textContent = ms.toFixed(0) + " ms";
+    $("behind").classList.toggle("bad", ms > 150);  // keeps growing = the phone is dropping mic audio
+    $("saved").textContent = !$("save").checked ? "off" : `${(r.savedKB / 1024).toFixed(1)} MB` + (r.saveFails ? ` · ${r.saveFails} failed` : "");
+    $("saved").className = r.saveFails ? "bad" : "";
   }
 
-  $("relearn").onclick = () => { if (run) { run.sonar.relearn(); run.learntAt = null; } };
+  // Re-measure only when asked, after a 2 s countdown so the hand that tapped has time to move away
+  $("relearn").onclick = () => {
+    const r = run;
+    if (!r || r.countdown) return;
+    r.countdown = 2;
+    $("relearn").disabled = true;
+    const tick = () => {
+      if (run !== r) return;
+      if (--r.countdown > 0) return void setTimeout(tick, 1000);
+      r.countdown = 0;
+      r.sonar.relearn(); r.learntAt = null;
+      logEv(r, { ev: "remeasure" });
+      $("relearn").disabled = false;
+    };
+    setTimeout(tick, 1000);
+  };
 
   $("stop").onclick = () => {
     const r = run;
     if (!r) return;
     run = null;
     r.timers.forEach(clearInterval);
+    logEv(r, { ev: "stop" });
+    save(r, true);
     r.gain.gain.setTargetAtTime(0, r.ctx.currentTime, 0.02); // fade out, no click
     setTimeout(() => {
       try { r.src.stop(); } catch {}

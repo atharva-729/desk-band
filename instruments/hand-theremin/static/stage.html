@@ -74,7 +74,9 @@
           <h2>How to read this</h2>
           <ul>
             <li>The phone plays a chirp every 21 ms and times its echo. <b class="hl">Longer wait = higher hand.</b></li>
-            <li>For the first second it measures the <b class="hl">empty table</b>, then shows only what changed. So with no hand, the map stays dark.</li>
+            <li>For the first second it measures the <b class="hl">empty table</b>, then shows only what changed. So with no hand, the map stays dark.
+              It only measures again when you tap <b>Re-measure</b> on the phone.</li>
+            <li>The speaker and mic are at the <b class="hl">bottom edge</b> of the phone: play over that end, not over the top.</li>
             <li>Hold a hand still at 10 cm: a <b class="hl">flat bright line at 10 cm</b>. Move it up and down: the line climbs and falls.</li>
             <li>A smudge right at the bottom is normal: that's the phone hearing its own speaker.</li>
           </ul>
@@ -83,9 +85,10 @@
           <h2>Your 3-minute check</h2>
           <ol>
             <li>Phone flat, screen up. Tap <b>Start sonar</b>, keep your hand away for 1 s.</li>
-            <li>Hold a flat hand, palm down, still at about <b>10, 20 and 30 cm</b> (a ruler or a stack of books helps), 3 s each.</li>
-            <li>Then move it slowly up and down.</li>
-            <li>Tell me: does a line show up, and is it at roughly the right height? <b>yes / sort of / no</b>, plus a screenshot of this page.</li>
+            <li>Over the <b>bottom edge</b>: a thick book held flat at about <b>10, 20 and 30 cm</b>, 3 s each, then away for 3 s.</li>
+            <li>The same with a flat hand, palm down.</li>
+            <li>Then move the hand slowly up and down for 10 s.</li>
+            <li>Tap Stop. The session is saved on the laptop: tell me what you saw and I'll replay it.</li>
           </ol>
         </div>
       </div>
@@ -102,7 +105,8 @@
           <tr><td>messages arriving</td><td id="rx">–</td></tr>
           <tr><td>lost (seq gaps)</td><td id="lost">0</td></tr>
           <tr><td>phone round trip</td><td id="rtt">–</td></tr>
-          <tr><td>table re-measured (auto)</td><td id="relearns">–</td></tr>
+          <tr><td>table re-measured (on request)</td><td id="relearns">–</td></tr>
+          <tr><td>mic audio behind the clock</td><td id="behind">–</td></tr>
           <tr><td>sonar volume</td><td id="vol">–</td></tr>
         </table>
         <div class="sub" style="margin-top:8px">"Chirp heard" needs at least 25 dB. If it says NO: volume up, silent mode off.</div>
@@ -159,7 +163,7 @@
     const heard = last.snr >= Sonar.HEARD_DB;
     $("status").textContent = !live ? (stopped ? "Sonar stopped on the phone." : "Phone not sending.")
       : last.learning ? "Keep your hand away: measuring the empty table…"
-      : !heard ? "The phone can't hear its chirp: volume up, silent mode off" : "Ready: hold your hand above the phone";
+      : !heard ? "The phone can't hear its chirp: volume up, silent mode off" : "Ready: hand above the bottom edge of the phone";
     $("status").classList.toggle("learn", live && (last.learning || !heard));
     $("hand").textContent = !live || last.learning ? "–" : last.hand == null ? "no hand" : last.hand.toFixed(1) + " cm";
     $("hand").classList.toggle("off", !live || last.hand == null);
@@ -173,6 +177,8 @@
     $("lost").textContent = lost;
     $("rtt").textContent = last.rtt == null ? "–" : last.rtt + " ms";
     $("relearns").textContent = last.relearns;
+    $("behind").textContent = last.behind == null ? "–" : last.behind + " ms";
+    $("behind").classList.toggle("bad", last.behind > 150);
     $("vol").textContent = last.vol + "%";
   }
 

@@ -21,7 +21,7 @@ function run(fs, { handAmp = 0.004, start = 137, block = 1024 } = {}) {
     frames.push(...out);
     return out;
   };
-  return { s, feed, frames };
+  return { s, sim, feed, frames };
 }
 
 // 1. Chirp shape: fades to silence at both ends (no clicks) and stays inside the period
@@ -68,16 +68,45 @@ for (const fs of [48000, 44100]) {
   console.log("INFO hand echo at 20 cm, mic noise 50 dB below the direct path:\n     " + rows.join("\n     "));
 }
 
-// 4. Dropped samples (a phone glitch) shift everything: it notices and re-learns
+// 4. Dropped samples (a phone glitch): the page sees the gap on the audio clock and calls skip(), which pads
+//    back into step. No re-learning, so a hand in view isn't baked into the "empty table".
 {
-  const { s, feed } = run(48000);
+  const { s, sim, feed } = run(48000);
   feed(60, null);
-  feed(5, null, 37);
-  const r = feed(80, null);
-  check(s.relearns === 1, `dropped samples -> re-learns the background (${s.relearns} time)`);
-  check(r.slice(-10).every((x) => !x.learning && !x.present), "after re-learning, no false hand");
-  const h = feed(20, 20).slice(3);
-  check(h.every((x) => x.present && Math.abs(x.handCm - 20) < 1), "and it still finds the hand at 20 cm");
+  feed(10, 20);
+  sim.next(0, null, 37);  // the phone loses 37 samples while the hand is at 20 cm...
+  s.skip(37);             // ...and the page notices
+  const r = feed(40, 20);
+  const ok = r.filter((x) => !x.glitch);
+  check(s.relearns === 0 && s.gaps === 1, `gap patched without re-learning (re-learns ${s.relearns}, gaps ${s.gaps})`);
+  check(r.filter((x) => x.glitch).length <= 2, "at most 2 frames ignored around the gap");
+  check(ok.length >= 38 && ok.every((x) => x.present && Math.abs(x.handCm - 20) < 1), "hand at 20 cm still found right after the gap");
+  const after = feed(20, null).slice(3);
+  check(after.every((x) => !x.present), "hand away after the gap -> silence (background still lines up)");
+
+  const u = run(48000);   // the same gap NOT patched, to show why it matters
+  u.feed(60, null);
+  u.sim.next(0, null, 37);
+  const bad = u.feed(20, null).slice(3).filter((x) => x.present).length;
+  console.log(`INFO same gap left unpatched: ${bad}/17 empty-table frames show a false hand`);
+}
+
+// 4b. Regression for the first iPhone run: a hand or book right over the speaker echoes LOUDER than the speaker's
+//     own sound. Phase 0 took that as "the audio slipped" and re-learnt with the hand in view.
+{
+  const { s, feed } = run(48000, { handAmp: 0.6 });  // echo twice as loud as the direct path (0.3)
+  feed(60, null);
+  const errs = [];
+  for (const cm of [6, 10, 15, 10, 6]) {
+    const r = feed(100, cm).slice(3);               // about 2 s each, 10 s in all
+    errs.push(r.every((x) => x.present && Math.abs(x.handCm - cm) < 1));
+  }
+  check(s.relearns === 0, `loud echo held for 10 s -> no re-learning (${s.relearns})`);
+  check(errs.every(Boolean), "and the loud echo is tracked at 6, 10, 15 cm the whole time");
+  const away = feed(20, null).slice(3);
+  check(away.every((x) => !x.present), "loud echo removed -> silence");
+  const heard = feed(1, null)[0];
+  check(heard.snrDb > 30, `"chirp heard" is judged at the direct path, not at the loudest echo (${heard.snrDb.toFixed(0)} dB)`);
 }
 
 // 5. Chirp-heard numbers make sense

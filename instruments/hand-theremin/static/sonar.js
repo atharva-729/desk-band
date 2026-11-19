@@ -101,7 +101,8 @@
     this.sumr = new Float64Array(P); this.sumi = new Float64Array(P);
     this.direct = -1;           // where the direct path sits in the profile, locked while learning
     this.learnLeft = o.learnFrames;
-    this.offCount = 0; this.relearns = 0; this.frames = 0;
+    this.relearns = 0; this.frames = 0;
+    this.gaps = 0; this.dirty = 0;   // audio gaps patched by skip(), and frames still to ignore after one
     this.noiseDb = null; this.present = false; this.peakAbs = 0;
     this.change = new Float32Array(this.rows);
     this.colChange = new Uint8Array(this.rows);  // what the echo map draws: change vs the empty table
@@ -111,7 +112,18 @@
   Sonar.prototype.relearn = function () {
     this.learnLeft = this.o.learnFrames;
     this.sumr.fill(0); this.sumi.fill(0);
-    this.present = false; this.offCount = 0;
+    this.present = false; this.relearns++;
+  };
+
+  // The phone dropped (or repeated) n samples. Everything after would sit at the wrong place in the period and
+  // no longer line up with the background, so pad with silence to get back in step. The frames that contain the
+  // gap are garbage: ignore them. (No re-learning needed, so a hand in view doesn't get baked into the table.)
+  Sonar.prototype.skip = function (n) {
+    const k = ((Math.round(n) % this.P) + this.P) % this.P;
+    if (!k) return;
+    this.gaps++;
+    this.dirty = 2;
+    this.push(new Float32Array(k));
   };
 
   // Feed mic samples (any block size). Calls onFrame(result) once per chirp period.
@@ -149,8 +161,19 @@
       if (m > bestM) { bestM = m; best = i; }
     }
     const floor = median(mags);
-    const res = { learning: this.learnLeft > 0, directDb: db(bestM), snrDb: db(bestM) - db(floor),
-      micPeak, clip: micPeak >= 0.99, handCm: null, present: false, ratio: 0, relearns: this.relearns };
+    // Once learnt, judge "chirp heard" at the direct path itself: a hand or book right over the speaker can echo
+    // louder than the speaker's own sound, and the strongest lag is then the hand, not the direct path.
+    const D = this.direct, dHere = this.learnLeft > 0 || D < 0 ? bestM : mags[D];
+    const res = { learning: this.learnLeft > 0, directDb: db(dHere), snrDb: db(dHere) - db(floor),
+      micPeak, clip: micPeak >= 0.99, handCm: null, present: this.present, ratio: 0, relearns: this.relearns,
+      best, direct: D, gaps: this.gaps, glitch: false, peakCm: null };
+
+    if (this.dirty > 0) {               // a frame with an audio gap in it: keep the last picture, learn nothing
+      this.dirty--;
+      res.glitch = true;
+      res.handCm = this.lastHand;
+      return res;
+    }
 
     if (this.learnLeft > 0) {
       for (let i = 0; i < P; i++) { this.sumr[i] += re[i]; this.sumi[i] += im[i]; }
@@ -158,6 +181,7 @@
         this.colRaw[i] = clamp255((db(mags[(best + i) % P] / (bestM || 1e-12)) + 60) / 60 * 255);
         this.colChange[i] = 0;
       }
+      res.present = false;
       if (--this.learnLeft === 0) {
         let dm = -1;
         for (let i = 0; i < P; i++) {
@@ -170,15 +194,9 @@
       return res;
     }
 
-    // The direct path should stay where it was learnt. It moves if the phone drops audio samples; then the
-    // background no longer lines up, so learn it again. (Only when the chirp is heard at all: with no chirp
-    // the strongest lag is just noise and jumps about.)
-    let dd = Math.abs(best - this.direct);
-    dd = Math.min(dd, P - dd);
-    if (dd > 2 && res.snrDb >= HEARD_DB) { if (++this.offCount >= 10) { this.relearns++; this.relearn(); return res; } }
-    else this.offCount = 0;
-
-    const D = this.direct, dm = Math.hypot(this.bgr[D], this.bgi[D]) || 1e-12;
+    // No automatic re-learning here. (Phase 0 re-learnt whenever the strongest echo moved off the direct path,
+    // but a hand or book over the speaker does exactly that, so it re-learnt with the hand in view.)
+    const dm = Math.hypot(this.bgr[D], this.bgi[D]) || 1e-12;
     let peak = 0, peakI = -1;
     for (let i = 0; i < rows; i++) {
       const j = (D + i) % P;
@@ -207,6 +225,7 @@
     res.present = this.present;
     res.peakCm = pos * this.cmPerRow;
     res.handCm = this.present ? res.peakCm : null;
+    this.lastHand = res.handCm;
     return res;
   };
 
@@ -306,7 +325,7 @@
   const toB64 = (u8) => { let s = ""; for (let i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]); return btoa(s); };
   const fromB64 = (b) => { const s = atob(b), u8 = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u8[i] = s.charCodeAt(i); return u8; };
 
-  const api = { Sonar, Simulator, EchoMap, makeChirp, fft, toB64, fromB64, DEFAULTS, SPEED, HEARD_DB };
+  const api = { Sonar, Simulator, EchoMap, makeChirp, fft, toB64, fromB64, DEFAULTS, SPEED, HEARD_DB, LUT };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.Sonar = api;
 })(typeof window !== "undefined" ? window : globalThis);

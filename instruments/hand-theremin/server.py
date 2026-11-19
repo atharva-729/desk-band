@@ -4,7 +4,11 @@
 Phone  -> https://<laptop-ip>:8446   (sonar page; HTTPS is required for the mic on iOS)
 Laptop -> http://localhost:8003      (stage page; shows the echo map, will play the theremin)
 
-The phone POSTs its sonar state (hand distance, echo-map columns) about 30 times a second to /state. The server relays each one to every
+The phone POSTs its sonar state (hand distance, echo-map columns) about 30 times a second to /state.
+It also saves each session for offline analysis (tools/replay.js) under data/sessions/, which is gitignored:
+  /log?s=<id>            JSON list of per-frame readings and events -> <id>.jsonl (appended)
+  /audio?s=<id>&at=<n>   raw mic samples, 16-bit little-endian, written at sample n -> <id>.pcm
+  Raw audio stays on this laptop. Never commit it. The server relays each one to every
 stage page listening on /events (Server-Sent Events). Standard library only, plus a self-signed certificate
 (made with `cryptography` if installed, otherwise the `openssl` command).
 """
@@ -12,6 +16,7 @@ import http.server
 import json
 import os
 import queue
+import re
 import socket
 import ssl
 import subprocess
@@ -21,6 +26,8 @@ import threading
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATIC = os.path.join(HERE, "static")
 CERTS = os.path.join(HERE, ".certs")
+DATA = os.environ.get("HANDTHEREMIN_DATA") or os.path.join(HERE, "data", "sessions")  # tests point this elsewhere
+SESSION_ID = re.compile(r"^[0-9A-Za-z_-]{1,48}$")
 PHONE_URL = ""
 HTTPS_PORT = int(os.environ.get("HANDTHEREMIN_HTTPS_PORT", 8446))
 HTTP_PORT = int(os.environ.get("HANDTHEREMIN_HTTP_PORT", 8003))
@@ -34,6 +41,7 @@ FILES = {
 
 subscribers = []
 sub_lock = threading.Lock()
+file_lock = threading.Lock()
 
 
 def broadcast(line):
@@ -163,8 +171,43 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if q in subscribers:
                     subscribers.remove(q)
 
+    def _args(self):
+        q = self.path.split("?", 1)[1] if "?" in self.path else ""
+        return dict(p.split("=", 1) for p in q.split("&") if "=" in p)
+
+    def _done(self):
+        self.send_response(204)
+        self.end_headers()
+
     def do_POST(self):
-        if self.path.split("?")[0] != "/state":
+        route = self.path.split("?")[0]
+        if route in ("/log", "/audio"):
+            args, n = self._args(), int(self.headers.get("Content-Length", 0))
+            sid = args.get("s", "")
+            if not SESSION_ID.match(sid) or n > 4_000_000:
+                return self.send_error(400)
+            body = self.rfile.read(n)
+            os.makedirs(DATA, exist_ok=True)
+            if route == "/log":
+                try:
+                    rows = json.loads(body or b"[]")
+                except json.JSONDecodeError:
+                    return self.send_error(400)
+                if not isinstance(rows, list):
+                    return self.send_error(400)
+                with file_lock, open(os.path.join(DATA, sid + ".jsonl"), "a", encoding="utf-8") as fh:
+                    for row in rows:
+                        fh.write(json.dumps(row) + "\n")
+                return self._done()
+            at = args.get("at", "")
+            if not at.isdigit() or len(body) % 2:
+                return self.send_error(400)
+            path = os.path.join(DATA, sid + ".pcm")
+            with file_lock, open(path, "r+b" if os.path.exists(path) else "wb") as fh:
+                fh.seek(int(at) * 2)  # by sample position, so a late or lost upload can't shift the rest
+                fh.write(body)
+            return self._done()
+        if route != "/state":
             return self.send_error(404)
         n = int(self.headers.get("Content-Length", 0))
         try:

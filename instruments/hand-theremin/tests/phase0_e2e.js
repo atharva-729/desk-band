@@ -60,7 +60,37 @@ const { launch, startServer, wait } = require("./cdp");
     const st = await stage.js(`({ hand: hand.textContent, link: link.textContent, cols: __stage.cols })`);
     console.log("stage:", JSON.stringify(st));
     check(/cm$|no hand/.test(st.hand) && st.link === "phone connected (simulated mic)", "stage shows the hand distance from the simulated phone");
+    const behind = await phone.js(`Math.round(__ht.behind / 48)`), remeasures0 = await phone.js(`__ht.sonar.relearns`);
+    check(remeasures0 === 0, `no re-measuring unless asked (${remeasures0})`);
+    console.log(`INFO mic audio behind the clock: ${behind} ms`);
+
+    // Re-measure button: 2 s countdown, then 1 s of measuring
+    await phone.click("#relearn");
+    check(await phone.until(`/Take your hand away/.test(document.getElementById("status").textContent)`, 1000), "Re-measure starts with a countdown");
+    check(await phone.until(`__ht.last.learning`, 4000), "then measures the table");
+    check(await phone.until(`!__ht.last.learning`, 3000) && (await phone.js(`__ht.sonar.relearns`)) === 1, "and goes back to tracking");
     check(phone.errors.length === 0 && stage.errors.length === 0, "no page errors " + JSON.stringify([...phone.errors, ...stage.errors]));
+
+    // Session saved on the laptop, and the replay tool reads it back
+    const sid = await phone.js(`__ht.sid`);
+    await phone.click("#stop");
+    await wait(1500);
+    const base = path.join(srv.data, sid);
+    const ok = fs.existsSync(base + ".jsonl") && fs.existsSync(base + ".pcm");
+    check(ok, `session saved: ${sid}.jsonl and .pcm in the data folder`);
+    if (ok) {
+      const secs = fs.statSync(base + ".pcm").size / 2 / 48000;
+      const lines = fs.readFileSync(base + ".jsonl", "utf-8").trim().split("\n").map((l) => JSON.parse(l));
+      check(secs > 15, `audio saved: ${secs.toFixed(1)} s`);
+      check(lines[0].type === "meta" && lines.some((l) => l.ev === "remeasure") && lines.filter((l) => l.f).length > 15 * 40,
+        `log saved: meta, ${lines.filter((l) => l.f).length} frames, the re-measure tap`);
+      const { execFileSync } = require("child_process");
+      const rep = execFileSync(process.execPath, [path.join(__dirname, "..", "tools", "replay.js"), base], { encoding: "utf-8" });
+      const agree = +(/replay vs live phone: (\d+)%/.exec(rep) || [])[1];
+      check(agree >= 95, `replay of the saved session matches the live phone (${agree}% of frames)`);
+      check(fs.existsSync(base + "-replay.png"), "replay draws the session picture");
+      fs.copyFileSync(base + "-replay.png", path.join(out, "replay-sim.png"));
+    }
   } finally {
     chrome.close(); srv.stop();
   }

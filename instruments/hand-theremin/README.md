@@ -28,10 +28,15 @@ cd instruments/hand-theremin
 python server.py                 # laptop http://localhost:8003, phone https://<ip>:8446 (QR on the laptop page)
 node tests/test_sonar.js         # offline: the sonar maths on a simulated mic
 node tests/phase0_e2e.js [dir]   # headless Chrome: phone + laptop pages, fake mic and simulated hand
+node tools/replay.js data/sessions/<id>   # replay a saved phone session: per-second table + <id>-replay.png
 ```
+
+Each run is saved on the laptop in `data/sessions/` (gitignored): `<id>.jsonl` (per-frame readings, taps, audio clock)
+and `<id>.pcm` (the raw mic audio, 16-bit). Untick "Save this session" on the phone to turn it off. Never commit these.
 
 1. Phone and laptop on the same Wi-Fi. Open the laptop page, scan the QR, accept the certificate warning.
 2. Lay the phone **flat, screen up**, volume up, silent mode off. Tap **Start sonar** and keep your hand away for 1 s.
+   Play over the phone's **bottom edge** (speaker grille end): that's where the speaker and mic are.
 3. Watch the **echo map** on the laptop: up = farther above the phone, left to right = the last 8 seconds.
    A hand held still at 10 cm should draw a bright flat line at 10 cm; moving it up and down makes the line climb and fall.
 4. "Chirp heard" must say **yes**. If not: volume up, silent mode off.
@@ -96,6 +101,16 @@ phone mic ──► cross-correlate with the chirp ──► echo profile (stren
    - the `.gitignore` described above.
 3. Phone page: a **Start sonar** button that plays the chirp and records the mic, plus a **Stop sonar** button.
 4. Commit.
+
+**First iPhone run (observed by eye, nothing saved yet):**
+- Hand over the **top** (earpiece) end: flickered between "5 cm" and nothing, so not seen. The 5 cm is the edge of the
+  search zone, so that's noise, not the hand.
+- Hand over the **bottom** (speaker) end: seen, roughly.
+- A **thick book** over the bottom end: a steady line moving from 15 to 10 cm.
+- **Bug:** the page re-measured the table on its own whenever the strongest echo wasn't the speaker's own sound. A hand
+  or book right over the speaker echoes louder than that, so it re-measured with the hand in view and broke every
+  reading after. Fixed: it now re-measures only when you tap **Re-measure** (after a 2 s countdown). "Chirp heard" is
+  judged at the speaker's own echo, and a test covers an echo twice as loud as the speaker.
 
 ### CHECKPOINT 0
 - The echo-map check result.

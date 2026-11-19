@@ -74,13 +74,14 @@ async function connect(wsUrl) {
 }
 
 // Start Hand Theremin's server on spare ports (not 8446/8003, so a running copy is left alone)
-async function startServer({ http = 8130, https = 8575 } = {}) {
+// Sessions it saves go to a temp folder (returned as .data), never into the repo's data/.
+async function startServer({ http = 8130, https = 8575, data = fs.mkdtempSync(path.join(os.tmpdir(), "ht-data-")) } = {}) {
   const root = path.join(__dirname, "..");
   const py = process.platform === "win32" ? "python" : "python3";
   const proc = spawn(py, [path.join(root, "server.py")], { cwd: root, stdio: "ignore",
-    env: { ...process.env, HANDTHEREMIN_HTTP_PORT: String(http), HANDTHEREMIN_HTTPS_PORT: String(https) } });
+    env: { ...process.env, HANDTHEREMIN_HTTP_PORT: String(http), HANDTHEREMIN_HTTPS_PORT: String(https), HANDTHEREMIN_DATA: data } });
   for (let i = 0; i < 50; i++) { try { await (await fetch(`http://localhost:${http}/info`)).json(); break; } catch { await wait(200); } }
-  return { stage: `http://localhost:${http}/`, phone: `https://localhost:${https}/`, stop: () => proc.kill() };
+  return { stage: `http://localhost:${http}/`, phone: `https://localhost:${https}/`, data, stop: () => proc.kill() };
 }
 
 module.exports = { launch, startServer, wait };
