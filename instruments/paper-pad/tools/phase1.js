@@ -6,11 +6,9 @@
 const fs = require("fs"), path = require("path");
 const C = require("../static/core.js"), F = require("../static/paper.js");
 
-const CLASSES = ["tap", "flick", "scratch", "rub", "quiet"];
-const HIT = (k) => k === "tap" || k === "flick";
+const CLASSES = F.CLASSES;
 const SETS = { "mic": ["mic"], "mic + accel": ["mic", "accel"], "mic + texture": ["mic", "tex"], "mic + accel + texture": ["mic", "accel", "tex"] };
 const WINDOWS = [150, 50]; // ms per example; 50 ms is what a fast hit path could afford
-const REACT_MS = 300;      // skip the start of each texture prompt: people need a moment to start scratching
 const SETUP_NAMES = { next: "Paper next to the phone", notebook: "Phone on an open notebook", a4: "Single loose A4 sheet" };
 
 function loadSessions(dataDir) {
@@ -26,45 +24,9 @@ function loadSessions(dataDir) {
   });
 }
 
-// Every sharp sound, found by the same onset detector the phone uses live.
-function onsets(audio, sr) {
-  const det = new C.Detector(sr, { thrMult: 5, postMs: 45 }), out = [];
-  for (let i = 0; i < audio.length; i += 256) {
-    const ch = audio.subarray(i, i + 256);
-    det.process(ch, ((i + ch.length) / sr) * 1000, (h) => out.push({ peak: h.peakIdx, amp: h.peakAmp / h.thr }));
-  }
-  return out;
-}
-
-// Labelled examples for one session and one window length. Labels come from the prompt that was showing.
-function examples(s, winMs) {
-  const { meta, audio } = s, sr = meta.sr, hp = F.highpass(audio, sr), ons = onsets(audio, sr);
-  const W = Math.round((winMs * sr) / 1000), H = Math.round((F.HIST_MS * sr) / 1000), pre = Math.round((F.PRE_MS * sr) / 1000);
-  const after = Math.round(((meta.timing ? meta.timing.after : 300) * sr) / 1000), react = Math.round((REACT_MS * sr) / 1000);
-  const hop = Math.round((F.HOP_MS * sr) / 1000);
-  const motion = (meta.motion || []).map(([smp, x, y, z]) => ({ t: (smp / sr) * 1000, x, y, z }));
-  const ex = [], detect = [];
-  const cut = (start, label, src, prompt) => {
-    if (start < 0 || start + W > hp.length) return;
-    const f = F.windowFeatures(hp.subarray(start, start + W), hp.subarray(Math.max(0, start - H), start), sr, motion, (start / sr) * 1000);
-    ex.push({ label, src, prompt, start, f });
-  };
-  meta.prompts.forEach((p, i) => {
-    if (HIT(p.kind)) {
-      const inside = ons.filter((o) => o.peak >= p.now && o.peak <= p.end + after);
-      detect.push({ kind: p.kind, n: inside.length });
-      if (!inside.length) return;
-      const best = inside.reduce((a, b) => (b.amp > a.amp ? b : a)); // extra detections are echoes/rattles of the same touch
-      cut(best.peak - pre, p.kind, "hit", i);
-    } else {
-      const inside = ons.filter((o) => o.peak >= p.now + react && o.peak <= p.end);
-      detect.push({ kind: p.kind, n: inside.length, seconds: (p.end - p.now) / sr });
-      for (let st = p.now + react; st + W <= p.end; st += hop) cut(st, p.kind, "slide", i);
-      for (const o of inside) cut(o.peak - pre, p.kind, "onset", i); // what the hit path would see during a scratch or rub
-    }
-  });
-  return { ex, detect };
-}
+// Example cutting lives in static/paper.js, shared with the phone (live training) and tools/simulate.js.
+const onsets = F.onsets;
+const examples = (s, winMs, opts) => F.examples(s.meta, s.audio, winMs, opts);
 
 const vec = (e, groups) => groups.flatMap((g) => e.f[g]);
 function train(exs, groups) {
@@ -105,7 +67,8 @@ function analyse({ data, out }) {
   const info = [];
   for (const s of sessions) {
     const per = {};
-    for (const w of WINDOWS) { const r = examples(s, w); (X[w] = X[w] || {})[s.id] = r.ex; per[w] = r; }
+    const hp = F.highpass(s.audio, s.meta.sr), ons = F.onsets(s.audio, s.meta.sr);
+    for (const w of WINDOWS) { const r = examples(s, w, { hp, ons }); (X[w] = X[w] || {})[s.id] = r.ex; per[w] = r; }
     const d = per[WINDOWS[0]].detect, hits = (k) => d.filter((x) => x.kind === k);
     const perSec = (k) => { const r = hits(k); const sec = r.reduce((a, x) => a + x.seconds, 0); return sec ? r.reduce((a, x) => a + x.n, 0) / sec : null; };
     info.push({ id: s.id, setup: s.meta.setup, length: s.meta.length, seconds: s.meta.seconds, sr: s.meta.sr, aborted: !!s.meta.aborted,

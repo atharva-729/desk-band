@@ -1,6 +1,6 @@
 # Paper Pad · Phase 1 signal test
 
-Generated 2026-11-19 09:08 by `node tools/phase1.js`. Every number is from **training on one recorded session and testing on a different one** (both directions, counts summed). No split of a single session is used.
+Generated 2026-11-19 11:35 by `node tools/phase1.js`. Every number is from **training on one recorded session and testing on a different one** (both directions, counts summed). No split of a single session is used.
 
 ## Sessions
 
@@ -20,9 +20,9 @@ Balanced accuracy = the average of the five per-class hit rates, so 10 taps coun
 | 150 ms | mic + texture | **90%** | 100% | 80% | 88% | 92% | 90% | 89% |
 | 150 ms | mic + accel + texture | **92%** | 100% | 87% | 89% | 93% | 94% | 94% |
 | 50 ms | mic | **77%** | 87% | 53% | 72% | 85% | 87% | 69% |
-| 50 ms | mic + accel | **82%** | 73% | 80% | 79% | 88% | 89% | 83% |
+| 50 ms | mic + accel | **82%** | 80% | 80% | 79% | 88% | 84% | 83% |
 | 50 ms | mic + texture | **87%** | 93% | 87% | 83% | 85% | 87% | 77% |
-| 50 ms | mic + accel + texture | **88%** | 87% | 87% | 85% | 89% | 93% | 89% |
+| 50 ms | mic + accel + texture | **88%** | 87% | 93% | 85% | 88% | 88% | 86% |
 
 ### Confusion matrix: 150 ms, mic + accel + texture
 

@@ -29,12 +29,29 @@ node tests/plumbing_e2e.js [out-dir]   # fake-mic phone + laptop in headless Chr
 node tests/recorder_e2e.js [out-dir]   # fake-mic phone records two short sessions; checks what the laptop saved
 node tests/test_phase1.js     # the Phase 1 analysis on synthetic sessions (pipeline check only, not real accuracy)
 node tools/phase1.js          # Phase 1 analysis on your recordings in data/sessions/ -> results/phase1-report.md
+node tools/simulate.js        # Phase 2: replay one recording through the live engine, trained on another -> results/phase2-sim.md
+node tests/play_e2e.js [out-dir]       # fake-mic phone trains on one recording and plays touches cut from another
 ```
+All browser tests run muted (`--mute-audio`).
 
 **Status:**
 - Phase 0 (skeleton) done. The phone page starts the mic and motion sensors, forwards every sharp sound it hears, and has a "Send test hit" button and a 1-minute prompted self-test. The stage page shows the QR join card, whether the phone is connected (heartbeat every 2 s), and each event, with a short synthesised knock. The laptop logs every event to `data/events-<date>.jsonl`.
   - Live self-test (iPhone, paper next to the phone): taps heard exactly once 6 of 6, flicks 6 of 6, 47–61 ms phone listening delay. Scratch and rub trigger only 0–3 onsets in 3 s, so they need their own window-based path, as planned.
 - Phase 1 result (2 sessions, phone lying on an open notebook, 1 full + 1 short, trained on one and tested on the other): **92% balanced accuracy, GO** (150 ms windows, mic + accel + texture). Tap 100%, flick 87%, scratch 89%, rub 93%, quiet 94%. Mic alone: 80%. The main error is scratch heard as quiet, in the gaps between strokes. Accuracy levels off after about 5–6 taps and flicks. Full report: `results/phase1-report.md`. The other two setups weren't recorded; Atharva plays with the phone on paper.
+- Phase 2 live instrument built; waiting for a live play-through.
+  - **Engine** (`static/engine.js`, the same code on the phone and in `tools/simulate.js`):
+    - Hits: at each sharp sound, a 75 ms window goes to the hit model; tap = kick, flick = clap. A quieter sound within 200 ms of a hit is its echo and is ignored.
+    - Textures: every 50 ms, the last 150 ms goes to the texture model. Scratch = DJ scratch (speed from loudness and brightness), rub = shaker (level from loudness).
+    - A texture switches on after one frame at least 80% sure, or two in a row, and only above a loudness gate taken from the "keep still" recordings. It switches off after two frames.
+    - Features: sound only (band energies + texture). Motion is left out: without motion readings, motion-trained models play scratch a third of the time in silence, and with them the score is no better.
+  - **Training:** on the phone, in a background worker, from every recording on the laptop. Each recording's features are worked out once and cached in `data/features/`. Training also uses the quiet windows before and after each prompted tap and flick, labelled from the prompt. "Fix it while you play" buttons save corrections to `data/fixes.jsonl` and retrain.
+  - **Replay result** (`results/phase2-sim.md`, trained on one recording, the other replayed through the engine, both ways):
+    - 91% balanced;
+    - taps 15 of 15 right, flicks 13 of 15;
+    - scratch playing 82% of its frames, rub 86%;
+    - scratch or rub playing by mistake 4% of the time during tap, flick and keep-still prompts (the first build: 26%);
+    - delay on the phone: 73 ms for hits, about 120 ms for textures.
+  - **Delay measurement** (phone, "Measure delay"): the laptop adds a short 4 kHz beep to each hit. The phone hears both the touch and the beep, and times touch to sound.
   - **Recorder** (phone page, "Record a session"): prompts in random order, full = 10 tap, 10 flick, 4 × 3 s scratch, 4 × 3 s rub, 4 × 3 s keep still (~2 min); short = half. Raw mic audio streams to `data/sessions/<id>/audio.pcm16` (local only) with `meta.json` holding the prompt times and motion readings, all as sample numbers on the audio's own clock. The laptop stays silent while recording.
   - **Recording plan:** 2 full sessions with the paper next to the phone, 2 short with the phone on an open notebook, 2 short with the phone on a loose A4 sheet. The phone ticks them off.
   - **Examples** (`tools/phase1.js`): taps and flicks = the window at the strongest onset during the prompt; scratch, rub and quiet = a window every 50 ms from 300 ms after "now", plus every onset inside those prompts (what the hit path would see). Windows of 150 ms and 50 ms.

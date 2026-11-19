@@ -14,7 +14,7 @@ async function launch(extraArgs = []) {
   const port = 9300 + Math.floor(Math.random() * 500);
   const prof = fs.mkdtempSync(path.join(os.tmpdir(), "pp-chrome-"));
   const proc = spawn(exe, ["--headless=new", `--remote-debugging-port=${port}`, `--user-data-dir=${prof}`, "--no-first-run",
-    "--autoplay-policy=no-user-gesture-required", "--disable-background-timer-throttling",
+    "--autoplay-policy=no-user-gesture-required", "--mute-audio", "--disable-background-timer-throttling", // tests never make noise
     "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows", ...extraArgs, "about:blank"], { stdio: "ignore" });
   const base = `http://127.0.0.1:${port}`;
   for (let i = 0; i < 60; i++) { try { await (await fetch(base + "/json/version")).json(); break; } catch { await wait(200); } }

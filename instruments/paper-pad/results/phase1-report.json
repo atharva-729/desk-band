@@ -1,5 +1,5 @@
 {
- "when": "2026-11-19T09:08:17.495Z",
+ "when": "2026-11-19T11:35:19.204Z",
  "sessions": [
   {
    "id": "notebook-full-20261119-090336",
@@ -355,21 +355,21 @@
   {
    "window": 50,
    "features": "mic + accel",
-   "balanced": 0.8192573401430187,
-   "accuracy": 0.8505303760848602,
+   "balanced": 0.8233056777244621,
+   "accuracy": 0.837029893924783,
    "recall": {
-    "tap": 0.7333333333333333,
+    "tap": 0.8,
     "flick": 0.8,
-    "scratch": 0.7908309455587392,
-    "rub": 0.8832335329341318,
-    "quiet": 0.8888888888888888
+    "scratch": 0.7936962750716332,
+    "rub": 0.8802395209580839,
+    "quiet": 0.8425925925925926
    },
    "n": 1037,
    "cm": {
     "tap": {
-     "tap": 11,
+     "tap": 12,
      "flick": 2,
-     "scratch": 2,
+     "scratch": 1,
      "rub": 0,
      "quiet": 0
     },
@@ -382,29 +382,29 @@
     },
     "scratch": {
      "tap": 9,
-     "flick": 17,
-     "scratch": 276,
-     "rub": 17,
-     "quiet": 30
+     "flick": 15,
+     "scratch": 277,
+     "rub": 16,
+     "quiet": 32
     },
     "rub": {
-     "tap": 2,
-     "flick": 5,
-     "scratch": 9,
-     "rub": 295,
-     "quiet": 23
+     "tap": 0,
+     "flick": 6,
+     "scratch": 8,
+     "rub": 294,
+     "quiet": 26
     },
     "quiet": {
      "tap": 0,
      "flick": 0,
-     "scratch": 21,
-     "rub": 15,
-     "quiet": 288
+     "scratch": 33,
+     "rub": 18,
+     "quiet": 273
     }
    },
    "bySrc": {
-    "hit": 0.7666666666666667,
-    "slide": 0.8539094650205762,
+    "hit": 0.8,
+    "slide": 0.838477366255144,
     "onset": 0.8285714285714286
    }
   },
@@ -467,14 +467,14 @@
   {
    "window": 50,
    "features": "mic + accel + texture",
-   "balanced": 0.879870999802369,
-   "accuracy": 0.8871745419479267,
+   "balanced": 0.8816198188362743,
+   "accuracy": 0.8698167791706847,
    "recall": {
     "tap": 0.8666666666666667,
-    "flick": 0.8666666666666667,
-    "scratch": 0.8538681948424068,
-    "rub": 0.8862275449101796,
-    "quiet": 0.9259259259259259
+    "flick": 0.9333333333333333,
+    "scratch": 0.8481375358166189,
+    "rub": 0.8772455089820359,
+    "quiet": 0.8827160493827161
    },
    "n": 1037,
    "cm": {
@@ -487,37 +487,37 @@
     },
     "flick": {
      "tap": 0,
-     "flick": 13,
-     "scratch": 2,
+     "flick": 14,
+     "scratch": 1,
      "rub": 0,
      "quiet": 0
     },
     "scratch": {
-     "tap": 4,
-     "flick": 5,
-     "scratch": 298,
+     "tap": 3,
+     "flick": 7,
+     "scratch": 296,
      "rub": 10,
-     "quiet": 32
+     "quiet": 33
     },
     "rub": {
      "tap": 0,
-     "flick": 4,
-     "scratch": 12,
-     "rub": 296,
-     "quiet": 22
+     "flick": 3,
+     "scratch": 13,
+     "rub": 293,
+     "quiet": 25
     },
     "quiet": {
      "tap": 0,
      "flick": 0,
      "scratch": 11,
-     "rub": 13,
-     "quiet": 300
+     "rub": 27,
+     "quiet": 286
     }
    },
    "bySrc": {
-    "hit": 0.8666666666666667,
-    "slide": 0.8878600823045267,
-    "onset": 0.8857142857142857
+    "hit": 0.9,
+    "slide": 0.8693415637860082,
+    "onset": 0.8571428571428571
    }
   }
  ],

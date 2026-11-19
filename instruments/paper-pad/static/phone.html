@@ -37,11 +37,16 @@
   details { margin-top:10px; }
   summary { color:var(--dim); font-size:13px; padding:4px 0; }
   button:disabled { opacity:.4; }
+  .now { font-size:42px; font-weight:900; text-align:center; padding:8px 0 0; min-height:62px; transition:color .3s; }
+  .fix { display:grid; grid-template-columns:repeat(5, 1fr); gap:6px; margin-top:6px; }
+  .fix button { padding:10px 2px; font-size:13px; }
+  .bars { display:grid; grid-template-columns:auto 1fr; gap:3px 8px; align-items:center; font-size:12px; color:var(--dim); margin-top:8px; }
+  .bars i { display:block; height:8px; border-radius:4px; background:var(--line); width:0; transition:width .08s; }
 </style>
 </head>
 <body>
 <h1>Paper Pad</h1>
-<div class="sub">Lay this phone flat on the table, next to a sheet of paper.</div>
+<div class="sub">Lay this phone flat on the paper (or on the table next to it). Touch the paper, not the phone.</div>
 
 <div id="intro" class="card">
   <div class="big">Start the sensors</div>
@@ -58,9 +63,26 @@
     <div class="status" id="motionInfo" style="margin-top:6px"></div>
   </div>
 
+  <div class="card" id="playCard">
+    <div class="big">Play</div>
+    <div class="status" id="trainInfo">Learning from your recordings…</div>
+    <div class="now" id="nowWhat">–</div>
+    <div class="status" id="nowSub" style="text-align:center">tap, flick, scratch or rub the paper</div>
+    <div class="bars" id="bars"></div>
+    <div class="status" style="margin-top:12px">Wrong? Tap what it really was (it learns from it):</div>
+    <div class="fix" id="fixRow">
+      <button data-fix="tap">Tap</button><button data-fix="flick">Flick</button><button data-fix="scratch">Scratch</button><button data-fix="rub">Rub</button><button data-fix="quiet">Nothing</button>
+    </div>
+    <div class="status" id="fixInfo"></div>
+    <div class="row"><button id="measure">Measure delay</button></div>
+    <div class="status" id="measureResult"></div>
+  </div>
+
+  <details id="recBox">
+  <summary>Record a training session</summary>
   <div class="card" id="recCard">
     <div class="big">Record a session</div>
-    <div class="status" id="recHint">The phone calls out touches in a random order: tap, flick, scratch, rub, keep still. Do each one when it turns yellow. Touch only the paper, not the phone or the table.</div>
+    <div class="status" id="recHint">The phone calls out touches in a random order: tap, flick, scratch, rub, keep still. Do each one when it turns yellow. Touch only the paper, not the phone or the table. Play learns from every recording.</div>
     <div class="setting"><label for="setup">Setup</label>
       <select id="setup">
         <option value="next">Paper next to phone</option>
@@ -73,7 +95,9 @@
     <div class="row"><button id="recGo" class="primary">Start recording</button></div>
     <div class="status" id="recResult"></div>
     <div class="status" id="recList" style="margin-top:8px;white-space:pre-line"></div>
+    <div class="row"><button id="clearFixes">Forget my fixes</button></div>
   </div>
+  </details>
 
   <details>
   <summary>Plumbing check and self-test</summary>
@@ -98,16 +122,22 @@
 
 <script src="core.js"></script>
 <script src="paper.js"></script>
+<script src="engine.js"></script>
 <script>
 (() => {
   "use strict";
   const $ = (id) => document.getElementById(id);
   let det = null, ctx = null, heard = 0;
+  let engine = null, models = null, measure = null; // play: the live engine and its trained models (see "play" below)
   const motion = [];
   let motionOK = false, motionEvents = 0, motionRate = 0;
 
   // Touching the phone shakes it and the screen tap is loud: ignore sounds for a moment afterwards.
-  document.addEventListener("pointerdown", () => { if (det) det.muteUntilMs = performance.now() + 700; }, true);
+  document.addEventListener("pointerdown", () => {
+    const until = performance.now() + 700;
+    if (det) det.muteUntilMs = until;
+    if (engine) engine.det.muteUntilMs = until;
+  }, true);
 
   // ---------- sensors (iOS: permission must be asked inside this tap handler) ----------
   $("start").addEventListener("click", async () => {
@@ -122,6 +152,7 @@
         motionEvents++;
         motion.push({ t: now, x: a.x, y: a.y, z: a.z });
         if (rec && rec.on) rec.motion.push([sampleNow(), +a.x.toFixed(4), +a.y.toFixed(4), +a.z.toFixed(4)]);
+        if (engine) engine.addMotion(engineNow(), a.x, a.y, a.z);
         while (motion.length && motion[0].t < now - 2000) motion.shift();
       });
       await startAudio();
@@ -169,11 +200,13 @@
       const ch = ev.inputBuffer.getChannelData(0);
       if (rec && rec.on) recPush(ch);
       det.process(ch, performance.now(), onSound);
+      if (engine) { engine.process(ch, performance.now()); if (measure) checkMeasure(); }
     };
     src.connect(proc); proc.connect(c.destination); // output stays silent
     c.onstatechange = micHealth;
     mic = { stream, src, proc };
     lastAudioMs = performance.now();
+    if (models) startEngine(); // (re)started mic: a fresh engine on the new audio clock
   }
   const micOK = () => !!mic && ctx.state === "running" && performance.now() - lastAudioMs < 1000 &&
     mic.stream.getAudioTracks().every((t) => t.readyState === "live");
@@ -226,6 +259,7 @@
     const tag = st ? { prompt: st.cur ? st.cur.kind : null, phase: st.phase, step: st.i } : {};
     if (st && st.cur) (st.phase === "now" ? st.cur.hits : st.cur.early).push(+(h.peakAmp / h.thr).toFixed(2));
     if (rec && rec.on) { if (rec.cur && rec.phase === "now") rec.cur.heard++; return; } // recording: the laptop stays silent, so its speakers can't leak into the recording
+    if (engine && !st) return; // playing: the engine sends named touches instead of plain sounds
     send({ type: "hit", kind: "sound", vel: +vel.toFixed(3), delay: Math.round(performance.now() - h.wallMs), n: heard, ...tag });
   }
   $("test").addEventListener("click", () => send({ type: "hit", kind: "test", vel: 0.8, delay: 0 }));
@@ -304,7 +338,6 @@
   const HIT = (k) => k === "tap" || k === "flick";
   const T = { readyHit: 1200, nowHit: 1800, readyTex: 1500, nowTex: 3000, after: 300 };
   const SETUPS = { next: "Paper next to the phone", notebook: "Phone on an open notebook", a4: "Single loose A4 sheet" };
-  const WANT = { next: ["full", 2], notebook: ["short", 2], a4: ["short", 2] }; // the Phase 1 plan
   let rec = null;
 
   function sampleNow() {
@@ -404,24 +437,167 @@
     $("recGo").disabled = false; $("recGo").textContent = "Start recording"; $("recGo").classList.add("primary");
     $("setup").disabled = $("length").disabled = false;
     refreshList();
+    if (ok) train("Learning from the new recording…");
   });
 
-  // What's recorded so far, against the Phase 1 plan (2 full passes next to the phone, 2 short on each other setup).
+  // What's recorded so far. Play learns from all of it.
+  let listedOnce = false;
   async function refreshList() {
     let list = [];
     try { list = await (await fetch("/rec/list", { cache: "no-store" })).json(); } catch { return; }
-    const lines = Object.entries(WANT).map(([setup, [length, n]]) => {
-      const have = list.filter((s) => s.setup === setup && s.length === length).length;
-      return `${have >= n ? "✓" : "○"} ${SETUPS[setup]}: ${have} of ${n} ${length} sessions`;
-    });
-    $("recList").textContent = "Recorded so far\n" + lines.join("\n");
-    // suggest the next one to record
-    const next = Object.entries(WANT).find(([setup, [length, n]]) => list.filter((s) => s.setup === setup && s.length === length).length < n);
-    if (next && !rec) { $("setup").value = next[0]; $("length").value = next[1][0]; }
+    const by = {};
+    for (const s of list) (by[s.setup] = by[s.setup] || []).push(s);
+    const n = (a, len) => a.filter((s) => s.length === len).length;
+    $("recList").textContent = list.length
+      ? "Recorded so far\n" + Object.entries(by).map(([k, a]) => `✓ ${SETUPS[k] || k}: ${a.length} (${n(a, "full")} full, ${n(a, "short")} short)`).join("\n")
+      : "Nothing recorded yet. Record 2 sessions to start playing (one full and one short is enough).";
+    if (!rec && list.length) $("setup").value = list[list.length - 1].setup; // same setup as last time
+    if (!listedOnce) { listedOnce = true; $("recBox").open = list.length < 2; }
   }
   refreshList();
 
+  // ---------- play: the live classifier (static/engine.js, the same code the offline replay test runs) ----------
+  const NAMES = { tap: "Tap", flick: "Flick", scratch: "Scratch", rub: "Rub", quiet: "Nothing" };
+  const COLORS = { tap: "#f2c14e", flick: "#ff7a6b", scratch: "#5aa9ff", rub: "#3dd6a3", quiet: "#8b90a3" };
+  const r2 = (v) => Math.round(v * 100) / 100;
+  let worker = null, training = false, trainAgain = false, lastEvent = null, episode = null, played = 0;
+  const playing = () => !!engine && !(rec && rec.on) && !st; // recording and self-test keep the laptop silent / raw
+  // The engine's sample clock, "now" (for stamping motion readings as they arrive)
+  const engineNow = () => Math.round(engine.total + Math.min(512, Math.max(0, ((performance.now() - lastAudioMs) * ctx.sampleRate) / 1000)));
+
+  $("bars").innerHTML = PaperEngine.CLASSES.map((c) => `<span>${NAMES[c]}</span><i id="bar-${c}" style="background:${COLORS[c]}"></i>`).join("");
+
+  function train(why) {
+    if (training) { trainAgain = true; return; }
+    training = true;
+    $("trainInfo").textContent = why || "Learning from your recordings…";
+    if (!worker) {
+      worker = new Worker("train-worker.js");
+      worker.onmessage = onWorker;
+      worker.onerror = (e) => { training = false; $("trainInfo").textContent = "Training failed: " + (e.message || "worker error"); };
+    }
+    worker.postMessage({ cmd: "train" });
+  }
+  function onWorker(ev) {
+    const m = ev.data;
+    if (m.type === "progress") { $("trainInfo").textContent = m.msg; return; }
+    training = false;
+    if (m.type === "error") $("trainInfo").textContent = "Training failed: " + m.msg;
+    else if (!m.models) { $("trainInfo").textContent = "Nothing to learn from yet: record a session first (below)."; $("recBox").open = true; }
+    else {
+      models = PaperEngine.unpackModels(m.models);
+      if (engine) engine.m = models; else if (ctx) startEngine();
+      $("trainInfo").textContent = `Learned from ${m.recordings} recording${m.recordings === 1 ? "" : "s"}` +
+        (m.fixes ? ` + ${m.fixes} fix${m.fixes === 1 ? "" : "es"}` : "") + ` in ${(m.ms / 1000).toFixed(1)} s.` + (ctx ? " Play!" : " Start the sensors to play.");
+      send({ type: "trained", recordings: m.recordings, fixes: m.fixes, ms: m.ms, counts: models.counts.tex });
+    }
+    if (trainAgain) { trainAgain = false; train(); }
+  }
+  train(); // starts right away (no sensors needed), so it's usually ready by the time they're on
+
+  function startEngine() {
+    engine = new PaperEngine.Engine(ctx.sampleRate, models);
+    engine.onHit = onPlayHit; engine.onState = onPlayState; engine.onFrame = onPlayFrame; engine.onOnset = onPlayOnset;
+  }
+  function show(kind, sub) {
+    $("nowWhat").textContent = NAMES[kind]; $("nowWhat").style.color = COLORS[kind];
+    if (sub != null) $("nowSub").textContent = sub;
+  }
+
+  function onPlayHit(ev) {
+    if (!playing()) return;
+    if (measure && measure.lastPeak != null && ev.peak < measure.ignoreUntil) return; // the laptop's own test click
+    lastEvent = { path: "hit", kind: ev.kind, examples: [PaperEngine.compact({ label: ev.kind, src: "live", f: ev.f, amp: ev.amp })] };
+    show(ev.kind, `${Math.round(ev.conf * 100)}% sure · loudness ${Math.round(ev.vel * 100)}% · decided ${Math.round(ev.lagMs)} ms after the touch`);
+    send({ type: "hit", kind: ev.kind, vel: r2(ev.vel), conf: r2(ev.conf), probs: ev.probs.map(r2), delay: Math.round(ev.lagMs), amp: r2(ev.amp), n: ++played });
+    if (measure) { measure.lastPeak = ev.peak; measure.ignoreUntil = ev.peak + Math.round(0.8 * ctx.sampleRate); measure.cand = []; }
+  }
+  function onPlayState(ev) {
+    if (ev.state) episode = { kind: ev.state, examples: [] };
+    else if (ev.prev && episode) { lastEvent = { path: "tex", kind: ev.prev, examples: episode.examples }; episode = null; }
+    if (!playing()) return;
+    if (ev.state) show(ev.state, "");
+    send({ type: "tex", state: ev.state, prev: ev.prev, level: r2(ev.level), speed: r2(ev.speed) });
+  }
+  function onPlayFrame(ev) {
+    if (episode && ev.state === episode.kind && episode.examples.length < 60)
+      episode.examples.push(PaperEngine.compact({ label: ev.state, src: "live", f: ev.f }));
+    if (!playing()) return;
+    PaperEngine.CLASSES.forEach((c, i) => ($("bar-" + c).style.width = Math.round(ev.probs[i] * 100) + "%"));
+    if (ev.state) $("nowSub").textContent = ev.state === "scratch" ? `speed ${Math.round(ev.speed * 100)}%` : `level ${Math.round(ev.level * 100)}%`;
+    sendFrame({ type: "frame", state: ev.state, label: ev.label, probs: ev.probs.map(r2), level: r2(ev.level), speed: r2(ev.speed), bands: ev.bands.map((v) => Math.round(v * 10) / 10) });
+  }
+
+  // "Fix it while you play": relabel the last touch (or the scratch/rub going on now) and learn from it.
+  document.querySelectorAll("#fixRow button").forEach((b) => b.addEventListener("click", async () => {
+    const label = b.dataset.fix, target = episode && episode.examples.length ? { path: "tex", kind: episode.kind, examples: episode.examples } : lastEvent;
+    if (!models) return;
+    if (!target || !target.examples.length) { $("fixInfo").textContent = "Nothing to fix yet: touch the paper first."; return; }
+    if (label === target.kind) { $("fixInfo").textContent = `It already heard ${NAMES[label].toLowerCase()}.`; return; }
+    const fix = { when: new Date().toISOString(), path: target.path, heard: target.kind, label, hitMs: models.hitMs, texMs: models.texMs, examples: target.examples };
+    lastEvent = null; if (target === episode) episode = null;
+    try {
+      const r = await fetch("/train/fix", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fix) });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      $("fixInfo").textContent = `Got it: that ${NAMES[target.kind].toLowerCase()} was a ${NAMES[label].toLowerCase()}. Learning…`;
+      send({ type: "fix", heard: target.kind, label, examples: target.examples.length });
+      train("Learning from your fix…");
+    } catch (e) { $("fixInfo").textContent = "Couldn't save the fix: " + e.message; }
+  }));
+  $("clearFixes").addEventListener("click", async () => {
+    try { await fetch("/train/fixes/clear", { method: "POST" }); $("fixInfo").textContent = "Fixes forgotten (kept aside on the laptop)."; train(); } catch {}
+  });
+
+  // ---------- measure the delay: the phone hears both the touch and the laptop's test click ----------
+  // While measuring, the laptop adds a short 4 kHz beep to every tap or flick it plays. The phone finds that beep in
+  // its own mic (a sharp sound that is mostly 4 kHz, 25–800 ms after the touch) and times touch -> sound out of the laptop.
+  const BEEP_HZ = 4000, MEASURE_N = 8;
+  $("measure").addEventListener("click", () => {
+    if (measure) return stopMeasure();
+    if (!engine) { $("measureResult").textContent = "Start the sensors and wait for learning to finish first."; return; }
+    measure = { res: [], cand: [], lastPeak: null, ignoreUntil: 0 };
+    send({ type: "measure", on: true, hz: BEEP_HZ });
+    $("measure").textContent = "Stop measuring";
+    $("measureResult").textContent = `Turn the laptop volume up. Tap the paper ${MEASURE_N} times, about once a second.`;
+  });
+  function onPlayOnset(o) {
+    if (!measure || measure.lastPeak == null) return;
+    const d = o.peak - measure.lastPeak, sr = ctx.sampleRate;
+    if (d > 0.025 * sr && d < 0.8 * sr) measure.cand.push(o);
+  }
+  function toneShare(x, hz, sr) { // share of the window's energy at hz (Goertzel): ~1 for a pure tone, small for paper sounds
+    const w = (2 * Math.PI * hz) / sr, c = 2 * Math.cos(w);
+    let s1 = 0, s2 = 0, e = 0;
+    for (let i = 0; i < x.length; i++) { const s0 = x[i] + c * s1 - s2; s2 = s1; s1 = s0; e += x[i] * x[i]; }
+    const p = s1 * s1 + s2 * s2 - c * s1 * s2;
+    return (2 * p) / (x.length * e + 1e-18);
+  }
+  function checkMeasure() {
+    const sr = ctx.sampleRate, len = Math.round(0.02 * sr);
+    while (measure.cand.length && engine.total >= measure.cand[0].peak + len) {
+      const o = measure.cand.shift(), share = toneShare(engine._win(o.peak - Math.round(0.002 * sr), len), BEEP_HZ, sr);
+      if (share < 0.3 || measure.lastPeak == null) continue;
+      measure.res.push(Math.round(((o.peak - measure.lastPeak) / sr) * 1000));
+      measure.lastPeak = null; measure.cand = [];
+      $("measureResult").textContent = `Touch to laptop sound: ${measure.res.join(", ")} ms (${measure.res.length} of ${MEASURE_N})`;
+      if (measure.res.length >= MEASURE_N) stopMeasure();
+    }
+  }
+  function stopMeasure() {
+    const res = measure.res, s = [...res].sort((a, b) => a - b), median = s.length ? s[Math.floor(s.length / 2)] : null;
+    measure = null;
+    send({ type: "measure", on: false, results: res, median });
+    $("measure").textContent = "Measure delay again";
+    $("measureResult").textContent = res.length ? `Touch to laptop sound: median ${median} ms (${res.join(", ")})` : "No laptop beeps heard: turn the laptop volume up and try again.";
+  }
+
   // ---------- network ----------
+  let framesInFlight = 0;
+  function sendFrame(msg) { // 20 a second: skip one rather than queue up behind a slow request
+    if (framesInFlight >= 2) return;
+    framesInFlight++;
+    fetch("/hit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(msg) }).catch(() => {}).finally(() => framesInFlight--);
+  }
   let sent = 0, failed = 0;
   function send(msg) {
     fetch("/hit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(msg), keepalive: true })

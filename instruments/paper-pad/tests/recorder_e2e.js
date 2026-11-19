@@ -34,8 +34,9 @@ function fakeAudio(file) { // quiet room noise with a short bright click every 0
     const phone = await browser.page(srv.phone + "?fast=1", { width: 390, height: 844, mobile: true });
     await phone.click("#start");
     check(await phone.until(`!document.getElementById("main").classList.contains("hidden")`), "phone: sensors start (fake mic)");
-    check(await phone.until(`document.getElementById("recList").textContent.includes("0 of 2 full")`, 3000), "phone: 'recorded so far' list shows nothing yet");
-    check((await phone.js(`document.getElementById("setup").value + "/" + document.getElementById("length").value`)) === "next/full", "phone: suggests the first session to record (next to phone, full)");
+    check(await phone.until(`document.getElementById("recList").textContent.includes("Nothing recorded yet")`, 3000), "phone: 'recorded so far' list shows nothing yet");
+    check(await phone.until(`/Nothing to learn from yet/.test(document.getElementById("trainInfo").textContent)`, 5000), "phone: Play says there is nothing to learn from yet");
+    check(await phone.js(`document.getElementById("recBox").open`), "phone: the recorder is open when there are no recordings");
 
     for (const k of [1, 2]) {
       await phone.select("#setup", "a4"); await phone.select("#length", "short");
@@ -47,7 +48,8 @@ function fakeAudio(file) { // quiet room noise with a short bright click every 0
       check(await phone.until(`/^Saved: 16 prompts/.test(document.getElementById("recResult").textContent)`, 60000), `recording ${k}: ${await phone.text("#recResult")}`);
       await wait(300);
     }
-    check(await phone.until(`document.getElementById("recList").textContent.includes("✓ Single loose A4 sheet: 2 of 2 short")`, 3000), "phone: list ticks off the A4 setup");
+    check(await phone.until(`document.getElementById("recList").textContent.includes("✓ Single loose A4 sheet: 2 (0 full, 2 short)")`, 3000), "phone: list shows both A4 recordings");
+    check(await phone.until(`/Learned from 2 recordings/.test(document.getElementById("trainInfo").textContent)`, 60000), `phone: learns from the new recordings: "${await phone.text("#trainInfo")}"`);
     check(await stage.until(`(document.getElementById("recLines").textContent.match(/✓ a4-short-/g) || []).length === 2`, 3000), "stage: lists both saved recordings");
 
     const root = path.join(srv.data, "sessions"), ids = fs.readdirSync(root);

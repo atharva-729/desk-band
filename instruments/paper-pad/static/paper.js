@@ -89,10 +89,12 @@
   }
 
   // One example = a window of (high-passed) audio. Feature groups are kept separate so the analysis can compare them.
-  // motion: [{t (ms on the audio clock), x, y, z}], tMs: window start on the same clock.
-  function windowFeatures(win, hist, sr, motion, tMs) {
+  // motion: [{t (ms on the audio clock), x, y, z}], tMs: window start on the same clock. Only readings that had
+  // arrived by uptoMs count (live, the decision is made when the window ends; later readings don't exist yet).
+  function windowFeatures(win, hist, sr, motion, tMs, uptoMs = Infinity) {
     const mic = C.audioFeatures(win, sr);                                 // 19: Desk Band band energies + level
-    const accel = C.accelFeatures(motion || [], tMs + PRE_MS, 40, 80);    // 7: Desk Band jolt direction + size
+    const arrived = (motion || []).filter((m) => m.t <= uptoMs && m.t >= tMs - 60);
+    const accel = C.accelFeatures(arrived, tMs + PRE_MS, 40, 80);         // 7: Desk Band jolt direction + size
     const tex = texture(win, hist, sr);                                   // 11: Paper Pad texture features
     return { mic, accel, tex };
   }
@@ -105,7 +107,66 @@
     return y;
   }
 
-  const api = { WIN_MS, HOP_MS, HIST_MS, PRE_MS, spectrum, shape, zcr, envelope, envStats, modulation, texture, windowFeatures, highpass };
+  // ---------- labelled examples from one prompted recording (labels come ONLY from the prompt times) ----------
+  const CLASSES = ["tap", "flick", "scratch", "rub", "quiet"];
+  const HIT = (k) => k === "tap" || k === "flick";
+  const REACT_MS = 300; // skip the start of each texture prompt: people need a moment to start scratching
+
+  // Every sharp sound, found by the same onset detector the phone uses live.
+  function onsets(audio, sr) {
+    const det = new C.Detector(sr, { thrMult: 5, postMs: 45 }), out = [];
+    for (let i = 0; i < audio.length; i += 256) {
+      const ch = audio.subarray(i, i + 256);
+      det.process(ch, ((i + ch.length) / sr) * 1000, (h) => out.push({ peak: h.peakIdx, amp: h.peakAmp / h.thr }));
+    }
+    return out;
+  }
+
+  // meta: the recorder's meta.json; audio: Float32Array of the raw mic. Returns { ex: [{label, src, prompt, start, f}], detect }.
+  //  tap / flick prompts: the window at the strongest sharp sound in [now, end + after] (src "hit")
+  //  scratch / rub / quiet: a window every 50 ms from 300 ms after "now" (src "slide"), plus every sharp sound inside (src "onset")
+  // opts.hp / opts.ons: pass the high-passed audio and onsets when cutting several window lengths from one recording.
+  // opts.around: add the windows around each tap and flick (see below); the live engine trains with them.
+  function examples(meta, audio, winMs, opts = {}) {
+    const sr = meta.sr, hp = opts.hp || highpass(audio, sr), ons = opts.ons || onsets(audio, sr);
+    const ms2s = (ms) => Math.round((ms * sr) / 1000);
+    const W = ms2s(winMs), H = ms2s(HIST_MS), pre = ms2s(PRE_MS), hop = ms2s(HOP_MS), react = ms2s(REACT_MS);
+    const after = ms2s(meta.timing ? meta.timing.after : 300);
+    const motion = (meta.motion || []).map(([smp, x, y, z]) => ({ t: (smp / sr) * 1000, x, y, z }));
+    const ex = [], detect = [];
+    const cut = (start, label, src, prompt, amp) => {
+      if (start < 0 || start + W > hp.length) return;
+      const f = windowFeatures(hp.subarray(start, start + W), hp.subarray(Math.max(0, start - H), start), sr, motion,
+        (start / sr) * 1000, ((start + W) / sr) * 1000);
+      ex.push({ label, src, prompt, start, f, amp });
+    };
+    meta.prompts.forEach((p, i) => {
+      if (HIT(p.kind)) {
+        const inside = ons.filter((o) => o.peak >= p.now && o.peak <= p.end + after);
+        detect.push({ kind: p.kind, n: inside.length });
+        if (!inside.length) return;
+        const best = inside.reduce((a, b) => (b.amp > a.amp ? b : a)); // extra detections are echoes/rattles of the same touch
+        cut(best.peak - pre, p.kind, "hit", i, best.amp);
+        // opts.around: also every 50 ms window of the prompt, as the live texture path sees it. Windows before the touch
+        // (waiting) and after it (its ringing tail) are not a texture: "quiet". With "all", a window holding the touch's
+        // peak is added as that touch too; "quiet" adds only the windows that don't hold it.
+        if (opts.around) for (let st = p.now; st + W <= p.end + after; st += hop) {
+          const holds = best.peak >= st - pre && best.peak < st + W;
+          if (!holds) cut(st, "quiet", "around", i);
+          else if (opts.around === "all") cut(st, p.kind, "around", i);
+        }
+      } else {
+        const inside = ons.filter((o) => o.peak >= p.now + react && o.peak <= p.end);
+        detect.push({ kind: p.kind, n: inside.length, seconds: (p.end - p.now) / sr });
+        for (let st = p.now + react; st + W <= p.end; st += hop) cut(st, p.kind, "slide", i);
+        for (const o of inside) cut(o.peak - pre, p.kind, "onset", i, o.amp); // what the hit path would see during a scratch or rub
+      }
+    });
+    return { ex, detect };
+  }
+
+  const api = { WIN_MS, HOP_MS, HIST_MS, PRE_MS, CLASSES, HIT, REACT_MS, spectrum, shape, zcr, envelope, envStats, modulation, texture,
+    windowFeatures, highpass, onsets, examples };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.PaperFeat = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

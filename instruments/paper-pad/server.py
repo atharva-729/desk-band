@@ -33,6 +33,8 @@ FILES = {  # url path -> (file under static/, content type)
     "/stage.html": ("stage.html", "text/html; charset=utf-8"),
     "/core.js": ("core.js", "application/javascript; charset=utf-8"),
     "/paper.js": ("paper.js", "application/javascript; charset=utf-8"),
+    "/engine.js": ("engine.js", "application/javascript; charset=utf-8"),
+    "/train-worker.js": ("train-worker.js", "application/javascript; charset=utf-8"),
     "/vendor/qrcode.js": (os.path.join("vendor", "qrcode.js"), "application/javascript; charset=utf-8"),
 }
 
@@ -43,6 +45,8 @@ last_phone = None  # the phone's latest status, replayed to stage pages that con
 rec_lock = threading.Lock()
 rec_next = {}  # recording id -> next audio chunk number expected
 REC_ID = re.compile(r"^[A-Za-z0-9-]{1,64}$")
+FEAT_KEY = re.compile(r"^[A-Za-z0-9-]{1,100}$")  # feature cache name: <recording id>-v<version>-<hit ms>-<texture ms>
+fix_lock = threading.Lock()
 
 
 def sessions_dir():
@@ -66,6 +70,20 @@ def list_sessions():
             continue  # unfinished recording
         out.append({"id": sid, "setup": m.get("setup"), "length": m.get("length"), "seconds": m.get("seconds"),
                     "prompts": len(m.get("prompts", [])), "when": m.get("when")})
+    return out
+
+
+def read_fixes():
+    """Corrections made while playing, oldest first."""
+    f = os.path.join(DATA, "fixes.jsonl")
+    out = []
+    if os.path.exists(f):
+        with fix_lock, open(f, encoding="utf-8") as fh:
+            for line in fh:
+                try:
+                    out.append(json.loads(line))
+                except ValueError:
+                    pass
     return out
 
 
@@ -134,8 +152,17 @@ def ensure_cert(ip):
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
+    # HTTP/1.1 keeps the phone's connection open between requests: while playing it sends ~20 small updates a second,
+    # and a new TLS handshake for each would add delay. Every response carries Content-Length (or never ends: /events).
+    protocol_version = "HTTP/1.1"
+    timeout = 120  # an idle kept-open connection is dropped after this
+
     def log_message(self, *args):
         pass
+
+    def send_error(self, *args, **kwargs):
+        self.close_connection = True  # the request body may not have been read: don't reuse this connection
+        super().send_error(*args, **kwargs)
 
     def _file(self, name, ctype):
         with open(os.path.join(STATIC, name), "rb") as f:
@@ -181,7 +208,32 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._json({"phone_url": PHONE_URL})
         if path == "/rec/list":
             return self._json(list_sessions())
+        if path in ("/rec/meta", "/rec/pcm"):
+            sid = query(self.path).get("id", "")
+            name = "meta.json" if path == "/rec/meta" else "audio.pcm16"
+            f = os.path.join(sessions_dir(), sid, name)
+            if not REC_ID.match(sid) or not os.path.exists(f):
+                return self.send_error(404)
+            return self._send_file(f, "application/json" if name.endswith(".json") else "application/octet-stream")
+        if path == "/train/features":
+            key = query(self.path).get("key", "")
+            f = os.path.join(DATA, "features", key + ".json")
+            if not FEAT_KEY.match(key) or not os.path.exists(f):
+                return self.send_error(404)
+            return self._send_file(f, "application/json")
+        if path == "/train/fixes":
+            return self._json(read_fixes())
         self.send_error(404)
+
+    def _send_file(self, f, ctype):
+        with open(f, "rb") as fh:
+            body = fh.read()
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def _events(self):
         self.send_response(200)
@@ -252,6 +304,31 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._rec_audio()
         if path == "/rec/done":
             return self._rec_done()
+        if path == "/train/features":
+            # the phone worked out the features of a recording: keep them so it doesn't have to again (no audio in here)
+            key = query(self.path).get("key", "")
+            feats = self._body(b"{}", 30_000_000)
+            if not FEAT_KEY.match(key) or not isinstance(feats, dict):
+                return self.send_error(400)
+            os.makedirs(os.path.join(DATA, "features"), exist_ok=True)
+            with open(os.path.join(DATA, "features", key + ".json"), "w", encoding="utf-8") as fh:
+                json.dump(feats, fh)
+            return self._no_content()
+        if path == "/train/fix":
+            # "that was actually a rub": a correction made while playing, kept as extra training
+            fix = self._body(b"{}", 2_000_000)
+            if not isinstance(fix, dict) or not isinstance(fix.get("examples"), list):
+                return self.send_error(400)
+            os.makedirs(DATA, exist_ok=True)
+            with fix_lock, open(os.path.join(DATA, "fixes.jsonl"), "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(fix) + "\n")
+            return self._json({"fixes": len(read_fixes())})
+        if path == "/train/fixes/clear":
+            with fix_lock:
+                f = os.path.join(DATA, "fixes.jsonl")
+                if os.path.exists(f):
+                    os.replace(f, os.path.join(DATA, f"fixes-cleared-{time.strftime('%Y%m%d-%H%M%S')}.jsonl"))
+            return self._json({"fixes": 0})
         if path == "/log":
             # session log from the phone: one JSON line per event, appended to data/log-<date>.jsonl
             events = self._body(b"[]", 5_000_000)
@@ -273,7 +350,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if msg.get("type") == "phone":
             global last_phone
             last_phone = line
-        else:  # every hit and self-test result is kept on the laptop, so a session can be checked afterwards
+        elif msg.get("type") != "frame":  # every event except the 20-a-second frames is kept, so a session can be checked afterwards
             os.makedirs(DATA, exist_ok=True)
             with log_lock, open(os.path.join(DATA, f"events-{time.strftime('%Y-%m-%d')}.jsonl"), "a", encoding="utf-8") as fh:
                 fh.write(line + "\n")
