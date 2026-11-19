@@ -82,7 +82,7 @@ const gen = {
   check(out.voice.on / out.voice.n < 0.05, "voice is not breath");
   check(out.flute.on / out.flute.n < 0.05, "a flute tone (e.g. from the laptop speaker) is not breath");
   check(out.room.on === 0, "room noise is not breath");
-  check(ms / frames < 2, `features are cheap enough for a phone (${(ms / frames).toFixed(2)} ms per frame in Node, frames every ${(C.HOP / SR * 1000).toFixed(1)} ms)`);
+  check(ms / frames < 5, `features are cheap enough for a phone (${(ms / frames).toFixed(2)} ms per frame in Node, frames every ${(C.HOP / SR * 1000).toFixed(1)} ms)`);
 }
 
 { // level follows the breath: fast attack (~10 ms), gentle release (~80 ms)

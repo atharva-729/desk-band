@@ -136,17 +136,20 @@ let text = "";
 const say = (s = "") => { console.log(s); text += s + "\n"; };
 
 for (const { name, d } of sessions) {
-  const ti = tiltStats(d), br = breathRates(d, {}), ft = featureTable(d), dl = breathDelays(d);
+  const hasTilt = !!d.cal && d.prompts.some((p) => p.kind === "hold");
+  const ti = hasTilt ? tiltStats(d) : null, br = breathRates(d, {}), ft = featureTable(d), dl = breathDelays(d);
   say(`\n=== ${name} ${d.complete ? "" : "(stopped early)"} · ${d.prompts.length} prompts · mic: ${d.mic} @ ${d.sampleRate} Hz`);
   if (d.events && d.events.length) say(`events: ${d.events.map(([t, w]) => `${f1((t - d.t0) / 1000)} s ${w}`).join(" · ")}${d.redone ? ` (${d.redone} prompt(s) redone)` : ""}`);
   if (!d.aud.length) say("NO MIC DATA in this run: the mic was silent the whole time");
   say(`rates: orientation ${f0(rateHz(d.ori.map((r) => r[0])))} /s, motion ${f0(rateHz(d.mot.map((r) => r[0])))} /s, mic frames ${f0(rateHz(d.aud.map((r) => r[0])))} /s`);
+  if (hasTilt) {
   say(`range ${f1(ti.span)}°, note width ${f1(ti.width)}° (go/no-go: jitter under ${f1(ti.width / 3)}°)`);
   for (const ms of [0, 40, 100])
     say(`  tilt jitter while holding, smoothing ${String(ms).padStart(3)} ms: median ${f1(med(ti.smooth[ms]))}°, worst ${f1(Math.max(...ti.smooth[ms]))}°`);
   say(`  phone's own angle (beta) in the same windows: median ${f1(med(ti.betaSd))}°, worst ${f1(Math.max(...ti.betaSd))}°`);
   say(`  note changes while holding (flicker), by hysteresis: ${Object.entries(ti.flicker).sort((a, b) => a[0] - b[0]).map(([h, n]) => `${h}° → ${n}`).join(", ")}`);
   say(`  time on the prompted note while holding: ${f0(100 * ti.onTarget)}%`);
+  } else say("sound-only run (no tilt prompts)");
   say(`breath (default thresholds ${JSON.stringify(C.BREATH_DEFAULTS)}):`);
   say(`  detected in ${f0(100 * br.blow)}% of blow frames (soft ${f0(100 * br.per["blow-soft"]?.on / br.per["blow-soft"]?.n)}%, hard ${f0(100 * br.per["blow-hard"]?.on / br.per["blow-hard"]?.n)}%)`);
   say(`  false triggers: talking ${f1(100 * br.talk)}%, silence ${f1(100 * br.silence)}%, holding notes ${f1(100 * br.hold)}%`);
@@ -157,7 +160,7 @@ for (const { name, d } of sessions) {
   say(`  prompt shown → breath on (includes your reaction): ${f0(med(dl.react))} ms`);
 
   html += `<h2>${name}</h2>`;
-  html += plot(d, ti.series, { key: "pos", lo: Math.floor(Math.min(0, ...ti.series.map((r) => r.pos)) / 10) * 10, hi: Math.ceil(Math.max(ti.span, ...ti.series.map((r) => r.pos)) / 10) * 10,
+  if (hasTilt) html += plot(d, ti.series, { key: "pos", lo: Math.floor(Math.min(0, ...ti.series.map((r) => r.pos)) / 10) * 10, hi: Math.ceil(Math.max(ti.span, ...ti.series.map((r) => r.pos)) / 10) * 10,
     title: `Tilt along the note axis (°), with note boundaries; shaded = "hold note k" windows`,
     lines: Array.from({ length: d.steps + 1 }, (_, k) => +(k * ti.width).toFixed(2)), shadeKinds: ["hold"] });
   const rp = replay(d, {});

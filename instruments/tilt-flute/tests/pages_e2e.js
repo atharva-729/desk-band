@@ -88,6 +88,17 @@ function noiseWav(file) {
       check(d.mot.length > 300 && d.aud.length > 500 && d.aud[0].length === 5, "sensor samples and mic features recorded");
       fs.copyFileSync(path.join(dir, files[0]), path.join(out, "fake-session.json"));
     }
+    // the sound-only test run: no calibration needed, 11 prompts, no "hold" prompts
+    await phone.js(`document.getElementById("doneCard").textContent = ""`);
+    await phone.click("#soundBtn");
+    check(await phone.until(`document.getElementById("doneCard").textContent.startsWith("Saved")`, 30000), "sound test finishes and saves");
+    const files2 = fs.readdirSync(dir).filter((f) => !files.includes(f));
+    if (files2.length === 1) {
+      const d2 = JSON.parse(fs.readFileSync(path.join(dir, files2[0]), "utf8"));
+      check(d2.soundOnly && d2.prompts.length === 11 && !d2.prompts.some((q) => q.kind === "hold") && d2.aud.length > 300,
+        `sound test: ${d2.prompts.length} prompts, ${d2.aud.length} mic frames, no tilt prompts`);
+    } else check(false, "sound test saved one more file");
+
     check(phone.errors.length === 0 && stage.errors.length === 0, "no page errors " + JSON.stringify([...phone.errors, ...stage.errors]));
   } finally {
     chrome.close(); srv.stop();
