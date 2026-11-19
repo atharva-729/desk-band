@@ -1,0 +1,575 @@
+{
+ "when": "2026-11-19T09:08:17.495Z",
+ "sessions": [
+  {
+   "id": "notebook-full-20261119-090336",
+   "setup": "notebook",
+   "length": "full",
+   "seconds": 124.97,
+   "sr": 48000,
+   "aborted": false,
+   "prompts": 32,
+   "motionReadings": 7498,
+   "heard": {
+    "tap": {
+     "prompts": 10,
+     "heard": 10,
+     "once": 9
+    },
+    "flick": {
+     "prompts": 10,
+     "heard": 10,
+     "once": 8
+    }
+   },
+   "onsetsPerSecond": {
+    "scratch": 1.331742640734678,
+    "rub": 0.5825889141652333,
+    "quiet": 0
+   },
+   "examples": {
+    "tap": 10,
+    "flick": 10,
+    "scratch": 224,
+    "rub": 215,
+    "quiet": 208
+   }
+  },
+  {
+   "id": "notebook-short-20261119-090634",
+   "setup": "notebook",
+   "length": "short",
+   "seconds": 62.97,
+   "sr": 48000,
+   "aborted": false,
+   "prompts": 16,
+   "motionReadings": 3778,
+   "heard": {
+    "tap": {
+     "prompts": 5,
+     "heard": 5,
+     "once": 2
+    },
+    "flick": {
+     "prompts": 5,
+     "heard": 5,
+     "once": 4
+    }
+   },
+   "onsetsPerSecond": {
+    "scratch": 1.4986678507992897,
+    "rub": 0.49938963489068916,
+    "quiet": 0
+   },
+   "examples": {
+    "tap": 5,
+    "flick": 5,
+    "scratch": 113,
+    "rub": 107,
+    "quiet": 104
+   }
+  }
+ ],
+ "mainSetup": "notebook",
+ "main": [
+  {
+   "window": 150,
+   "features": "mic",
+   "balanced": 0.8017750374168902,
+   "accuracy": 0.8211788211788211,
+   "recall": {
+    "tap": 0.9333333333333333,
+    "flick": 0.6,
+    "scratch": 0.7062314540059347,
+    "rub": 0.8975155279503105,
+    "quiet": 0.8717948717948718
+   },
+   "n": 1001,
+   "cm": {
+    "tap": {
+     "tap": 14,
+     "flick": 0,
+     "scratch": 1,
+     "rub": 0,
+     "quiet": 0
+    },
+    "flick": {
+     "tap": 2,
+     "flick": 9,
+     "scratch": 3,
+     "rub": 1,
+     "quiet": 0
+    },
+    "scratch": {
+     "tap": 12,
+     "flick": 31,
+     "scratch": 238,
+     "rub": 20,
+     "quiet": 36
+    },
+    "rub": {
+     "tap": 0,
+     "flick": 3,
+     "scratch": 4,
+     "rub": 289,
+     "quiet": 26
+    },
+    "quiet": {
+     "tap": 1,
+     "flick": 1,
+     "scratch": 18,
+     "rub": 20,
+     "quiet": 272
+    }
+   },
+   "bySrc": {
+    "hit": 0.7666666666666667,
+    "slide": 0.8247863247863247,
+    "onset": 0.7714285714285715
+   }
+  },
+  {
+   "window": 150,
+   "features": "mic + accel",
+   "balanced": 0.8925251308705058,
+   "accuracy": 0.8871128871128872,
+   "recall": {
+    "tap": 1,
+    "flick": 0.8,
+    "scratch": 0.8427299703264095,
+    "rub": 0.9192546583850931,
+    "quiet": 0.9006410256410257
+   },
+   "n": 1001,
+   "cm": {
+    "tap": {
+     "tap": 15,
+     "flick": 0,
+     "scratch": 0,
+     "rub": 0,
+     "quiet": 0
+    },
+    "flick": {
+     "tap": 2,
+     "flick": 12,
+     "scratch": 0,
+     "rub": 1,
+     "quiet": 0
+    },
+    "scratch": {
+     "tap": 12,
+     "flick": 5,
+     "scratch": 284,
+     "rub": 9,
+     "quiet": 27
+    },
+    "rub": {
+     "tap": 0,
+     "flick": 5,
+     "scratch": 2,
+     "rub": 296,
+     "quiet": 19
+    },
+    "quiet": {
+     "tap": 0,
+     "flick": 0,
+     "scratch": 15,
+     "rub": 16,
+     "quiet": 281
+    }
+   },
+   "bySrc": {
+    "hit": 0.9,
+    "slide": 0.8856837606837606,
+    "onset": 0.9142857142857143
+   }
+  },
+  {
+   "window": 150,
+   "features": "mic + texture",
+   "balanced": 0.9002878182325995,
+   "accuracy": 0.9000999000999002,
+   "recall": {
+    "tap": 1,
+    "flick": 0.8,
+    "scratch": 0.8783382789317508,
+    "rub": 0.9192546583850931,
+    "quiet": 0.9038461538461539
+   },
+   "n": 1001,
+   "cm": {
+    "tap": {
+     "tap": 15,
+     "flick": 0,
+     "scratch": 0,
+     "rub": 0,
+     "quiet": 0
+    },
+    "flick": {
+     "tap": 2,
+     "flick": 12,
+     "scratch": 0,
+     "rub": 1,
+     "quiet": 0
+    },
+    "scratch": {
+     "tap": 11,
+     "flick": 1,
+     "scratch": 296,
+     "rub": 2,
+     "quiet": 27
+    },
+    "rub": {
+     "tap": 0,
+     "flick": 1,
+     "scratch": 5,
+     "rub": 296,
+     "quiet": 20
+    },
+    "quiet": {
+     "tap": 0,
+     "flick": 0,
+     "scratch": 22,
+     "rub": 8,
+     "quiet": 282
+    }
+   },
+   "bySrc": {
+    "hit": 0.9,
+    "slide": 0.9006410256410257,
+    "onset": 0.8857142857142857
+   }
+  },
+  {
+   "window": 150,
+   "features": "mic + accel + texture",
+   "balanced": 0.9249373210971713,
+   "accuracy": 0.919080919080919,
+   "recall": {
+    "tap": 1,
+    "flick": 0.8666666666666667,
+    "scratch": 0.887240356083086,
+    "rub": 0.9316770186335404,
+    "quiet": 0.9391025641025641
+   },
+   "n": 1001,
+   "cm": {
+    "tap": {
+     "tap": 15,
+     "flick": 0,
+     "scratch": 0,
+     "rub": 0,
+     "quiet": 0
+    },
+    "flick": {
+     "tap": 1,
+     "flick": 13,
+     "scratch": 0,
+     "rub": 1,
+     "quiet": 0
+    },
+    "scratch": {
+     "tap": 7,
+     "flick": 3,
+     "scratch": 299,
+     "rub": 1,
+     "quiet": 27
+    },
+    "rub": {
+     "tap": 0,
+     "flick": 3,
+     "scratch": 3,
+     "rub": 300,
+     "quiet": 16
+    },
+    "quiet": {
+     "tap": 0,
+     "flick": 0,
+     "scratch": 8,
+     "rub": 11,
+     "quiet": 293
+    }
+   },
+   "bySrc": {
+    "hit": 0.9333333333333333,
+    "slide": 0.9177350427350427,
+    "onset": 0.9428571428571428
+   }
+  },
+  {
+   "window": 50,
+   "features": "mic",
+   "balanced": 0.7685023437154133,
+   "accuracy": 0.8090646094503375,
+   "recall": {
+    "tap": 0.8666666666666667,
+    "flick": 0.5333333333333333,
+    "scratch": 0.7249283667621776,
+    "rub": 0.8502994011976048,
+    "quiet": 0.8672839506172839
+   },
+   "n": 1037,
+   "cm": {
+    "tap": {
+     "tap": 13,
+     "flick": 2,
+     "scratch": 0,
+     "rub": 0,
+     "quiet": 0
+    },
+    "flick": {
+     "tap": 0,
+     "flick": 8,
+     "scratch": 6,
+     "rub": 1,
+     "quiet": 0
+    },
+    "scratch": {
+     "tap": 9,
+     "flick": 28,
+     "scratch": 253,
+     "rub": 12,
+     "quiet": 47
+    },
+    "rub": {
+     "tap": 0,
+     "flick": 7,
+     "scratch": 11,
+     "rub": 284,
+     "quiet": 32
+    },
+    "quiet": {
+     "tap": 0,
+     "flick": 1,
+     "scratch": 26,
+     "rub": 16,
+     "quiet": 281
+    }
+   },
+   "bySrc": {
+    "hit": 0.7,
+    "slide": 0.8168724279835391,
+    "onset": 0.6857142857142857
+   }
+  },
+  {
+   "window": 50,
+   "features": "mic + accel",
+   "balanced": 0.8192573401430187,
+   "accuracy": 0.8505303760848602,
+   "recall": {
+    "tap": 0.7333333333333333,
+    "flick": 0.8,
+    "scratch": 0.7908309455587392,
+    "rub": 0.8832335329341318,
+    "quiet": 0.8888888888888888
+   },
+   "n": 1037,
+   "cm": {
+    "tap": {
+     "tap": 11,
+     "flick": 2,
+     "scratch": 2,
+     "rub": 0,
+     "quiet": 0
+    },
+    "flick": {
+     "tap": 0,
+     "flick": 12,
+     "scratch": 2,
+     "rub": 1,
+     "quiet": 0
+    },
+    "scratch": {
+     "tap": 9,
+     "flick": 17,
+     "scratch": 276,
+     "rub": 17,
+     "quiet": 30
+    },
+    "rub": {
+     "tap": 2,
+     "flick": 5,
+     "scratch": 9,
+     "rub": 295,
+     "quiet": 23
+    },
+    "quiet": {
+     "tap": 0,
+     "flick": 0,
+     "scratch": 21,
+     "rub": 15,
+     "quiet": 288
+    }
+   },
+   "bySrc": {
+    "hit": 0.7666666666666667,
+    "slide": 0.8539094650205762,
+    "onset": 0.8285714285714286
+   }
+  },
+  {
+   "window": 50,
+   "features": "mic + texture",
+   "balanced": 0.8709218684566556,
+   "accuracy": 0.8524590163934426,
+   "recall": {
+    "tap": 0.9333333333333333,
+    "flick": 0.8666666666666667,
+    "scratch": 0.830945558739255,
+    "rub": 0.8532934131736527,
+    "quiet": 0.8703703703703703
+   },
+   "n": 1037,
+   "cm": {
+    "tap": {
+     "tap": 14,
+     "flick": 1,
+     "scratch": 0,
+     "rub": 0,
+     "quiet": 0
+    },
+    "flick": {
+     "tap": 0,
+     "flick": 13,
+     "scratch": 2,
+     "rub": 0,
+     "quiet": 0
+    },
+    "scratch": {
+     "tap": 4,
+     "flick": 7,
+     "scratch": 290,
+     "rub": 7,
+     "quiet": 41
+    },
+    "rub": {
+     "tap": 0,
+     "flick": 6,
+     "scratch": 12,
+     "rub": 285,
+     "quiet": 31
+    },
+    "quiet": {
+     "tap": 0,
+     "flick": 0,
+     "scratch": 20,
+     "rub": 22,
+     "quiet": 282
+    }
+   },
+   "bySrc": {
+    "hit": 0.9,
+    "slide": 0.8539094650205762,
+    "onset": 0.7714285714285715
+   }
+  },
+  {
+   "window": 50,
+   "features": "mic + accel + texture",
+   "balanced": 0.879870999802369,
+   "accuracy": 0.8871745419479267,
+   "recall": {
+    "tap": 0.8666666666666667,
+    "flick": 0.8666666666666667,
+    "scratch": 0.8538681948424068,
+    "rub": 0.8862275449101796,
+    "quiet": 0.9259259259259259
+   },
+   "n": 1037,
+   "cm": {
+    "tap": {
+     "tap": 13,
+     "flick": 2,
+     "scratch": 0,
+     "rub": 0,
+     "quiet": 0
+    },
+    "flick": {
+     "tap": 0,
+     "flick": 13,
+     "scratch": 2,
+     "rub": 0,
+     "quiet": 0
+    },
+    "scratch": {
+     "tap": 4,
+     "flick": 5,
+     "scratch": 298,
+     "rub": 10,
+     "quiet": 32
+    },
+    "rub": {
+     "tap": 0,
+     "flick": 4,
+     "scratch": 12,
+     "rub": 296,
+     "quiet": 22
+    },
+    "quiet": {
+     "tap": 0,
+     "flick": 0,
+     "scratch": 11,
+     "rub": 13,
+     "quiet": 300
+    }
+   },
+   "bySrc": {
+    "hit": 0.8666666666666667,
+    "slide": 0.8878600823045267,
+    "onset": 0.8857142857142857
+   }
+  }
+ ],
+ "setups": [
+  {
+   "setup": "notebook",
+   "sessions": 2,
+   "balanced": 0.9249373210971713,
+   "recall": {
+    "tap": 1,
+    "flick": 0.8666666666666667,
+    "scratch": 0.887240356083086,
+    "rub": 0.9316770186335404,
+    "quiet": 0.9391025641025641
+   }
+  }
+ ],
+ "transfer": [],
+ "learning": [
+  {
+   "fraction": 0.25,
+   "tapExamples": 3,
+   "flickExamples": 1,
+   "scratchWindows": 58,
+   "balanced": 0.734705003206487
+  },
+  {
+   "fraction": 0.5,
+   "tapExamples": 6,
+   "flickExamples": 4,
+   "scratchWindows": 58,
+   "balanced": 0.8861158952431045
+  },
+  {
+   "fraction": 0.75,
+   "tapExamples": 9,
+   "flickExamples": 6,
+   "scratchWindows": 170,
+   "balanced": 0.8624339622017342
+  },
+  {
+   "fraction": 1,
+   "tapExamples": 10,
+   "flickExamples": 10,
+   "scratchWindows": 224,
+   "balanced": 0.9249373210971713
+  }
+ ],
+ "best": {
+  "window": 150,
+  "features": "mic + accel + texture",
+  "balanced": 0.9249373210971713
+ },
+ "go": true
+}
