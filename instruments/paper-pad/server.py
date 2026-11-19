@@ -12,6 +12,7 @@ import http.server
 import json
 import os
 import queue
+import re
 import socket
 import ssl
 import subprocess
@@ -31,6 +32,7 @@ FILES = {  # url path -> (file under static/, content type)
     "/phone.html": ("phone.html", "text/html; charset=utf-8"),
     "/stage.html": ("stage.html", "text/html; charset=utf-8"),
     "/core.js": ("core.js", "application/javascript; charset=utf-8"),
+    "/paper.js": ("paper.js", "application/javascript; charset=utf-8"),
     "/vendor/qrcode.js": (os.path.join("vendor", "qrcode.js"), "application/javascript; charset=utf-8"),
 }
 
@@ -38,6 +40,33 @@ subscribers = []
 sub_lock = threading.Lock()
 log_lock = threading.Lock()
 last_phone = None  # the phone's latest status, replayed to stage pages that connect later
+rec_lock = threading.Lock()
+rec_next = {}  # recording id -> next audio chunk number expected
+REC_ID = re.compile(r"^[A-Za-z0-9-]{1,64}$")
+
+
+def sessions_dir():
+    return os.path.join(DATA, "sessions")
+
+
+def query(path):
+    q = path.split("?", 1)[1] if "?" in path else ""
+    return dict(p.split("=", 1) for p in q.split("&") if "=" in p)
+
+
+def list_sessions():
+    """Saved recordings, oldest first: what the phone shows as 'recorded so far'."""
+    out = []
+    root = sessions_dir()
+    for sid in sorted(os.listdir(root)) if os.path.isdir(root) else []:
+        try:
+            with open(os.path.join(root, sid, "meta.json"), encoding="utf-8") as fh:
+                m = json.load(fh)
+        except (OSError, ValueError):
+            continue  # unfinished recording
+        out.append({"id": sid, "setup": m.get("setup"), "length": m.get("length"), "seconds": m.get("seconds"),
+                    "prompts": len(m.get("prompts", [])), "when": m.get("when")})
+    return out
 
 
 def broadcast(line):
@@ -150,6 +179,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._events()
         if path == "/info":
             return self._json({"phone_url": PHONE_URL})
+        if path == "/rec/list":
+            return self._json(list_sessions())
         self.send_error(404)
 
     def _events(self):
@@ -180,8 +211,47 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if q in subscribers:
                     subscribers.remove(q)
 
+    def _rec_audio(self):
+        """One chunk of raw mic audio (16-bit mono PCM) from a recording, appended in order. Stays on this laptop."""
+        args = query(self.path)
+        sid, seq = args.get("id", ""), args.get("seq", "")
+        n = int(self.headers.get("Content-Length", 0))
+        if not REC_ID.match(sid) or not seq.isdigit() or n > 4_000_000:
+            return self.send_error(400)
+        body = self.rfile.read(n)
+        folder = os.path.join(sessions_dir(), sid)
+        with rec_lock:
+            want = rec_next.get(sid, 0)
+            if int(seq) != want:
+                return self._json({"expected": want}, 409)
+            os.makedirs(folder, exist_ok=True)
+            with open(os.path.join(folder, "audio.pcm16"), "wb" if want == 0 else "ab") as fh:
+                fh.write(body)
+            rec_next[sid] = want + 1
+            size = os.path.getsize(os.path.join(folder, "audio.pcm16"))
+        return self._json({"bytes": size})
+
+    def _rec_done(self):
+        """End of a recording: prompts (the labels), motion readings and device details."""
+        sid = query(self.path).get("id", "")
+        meta = self._body(b"{}", 20_000_000)
+        folder = os.path.join(sessions_dir(), sid)
+        audio = os.path.join(folder, "audio.pcm16")
+        if not REC_ID.match(sid) or not isinstance(meta, dict) or not os.path.exists(audio):
+            return self.send_error(400)
+        meta["audioBytes"] = os.path.getsize(audio)
+        with open(os.path.join(folder, "meta.json"), "w", encoding="utf-8") as fh:
+            json.dump(meta, fh)
+        with rec_lock:
+            rec_next.pop(sid, None)
+        return self._json({"bytes": meta["audioBytes"]})
+
     def do_POST(self):
         path = self.path.split("?")[0]
+        if path == "/rec/audio":
+            return self._rec_audio()
+        if path == "/rec/done":
+            return self._rec_done()
         if path == "/log":
             # session log from the phone: one JSON line per event, appended to data/log-<date>.jsonl
             events = self._body(b"[]", 5_000_000)

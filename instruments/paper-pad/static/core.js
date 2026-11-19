@@ -146,9 +146,12 @@
 
   // ---------- Multinomial logistic regression (small, plain) ----------
   class Model {
-    fit(X, Y, { l2 = 0.05, iters = 600, lr = 0.2 } = {}) {
-      this.classes = [...new Set(Y)].sort((a, b) => a - b);
+    // weights (optional, Paper Pad addition): one per example; e.g. 1 / class count, so rare classes count as much as common ones
+    fit(X, Y, { l2 = 0.05, iters = 600, lr = 0.2, weights = null } = {}) {
+      this.classes = [...new Set(Y)].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
       const K = this.classes.length, D = X[0].length, N = X.length;
+      const sw = weights ? weights.reduce((a, b) => a + b, 0) : N;
+      const w = weights ? weights.map((v) => (v * N) / sw) : null; // scaled so they average 1
       this.mu = new Array(D).fill(0); this.sd = new Array(D).fill(0);
       for (const x of X) x.forEach((v, j) => (this.mu[j] += v / N));
       for (const x of X) x.forEach((v, j) => (this.sd[j] += (v - this.mu[j]) ** 2 / N));
@@ -163,7 +166,7 @@
         for (let n = 0; n < N; n++) {
           const p = this._softmax(Z[n]);
           for (let k = 0; k < K; k++) {
-            const g = (p[k] - (yi[n] === k ? 1 : 0)) / N;
+            const g = ((p[k] - (yi[n] === k ? 1 : 0)) * (w ? w[n] : 1)) / N;
             gb[k] += g;
             for (let d = 0; d < D; d++) gW[d][k] += Z[n][d] * g;
           }

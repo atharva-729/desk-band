@@ -26,9 +26,20 @@ cd instruments/paper-pad
 python server.py              # laptop http://localhost:8001, phone https://<ip>:8444 (QR on the laptop page)
 node tests/test_core.js       # offline core test (synthetic knocks)
 node tests/plumbing_e2e.js [out-dir]   # fake-mic phone + laptop in headless Chrome/Edge; starts its own server on 8101/8544
+node tests/recorder_e2e.js [out-dir]   # fake-mic phone records two short sessions; checks what the laptop saved
+node tests/test_phase1.js     # the Phase 1 analysis on synthetic sessions (pipeline check only, not real accuracy)
+node tools/phase1.js          # Phase 1 analysis on your recordings in data/sessions/ -> results/phase1-report.md
 ```
 
-**Status:** Phase 0 (skeleton) done. The phone page starts the mic and motion sensors, forwards every sharp sound it hears, and has a "Send test hit" button. The stage page shows the QR join card, whether the phone is connected (heartbeat every 2 s), and each event, with a short synthesised knock.
+**Status:**
+- Phase 0 (skeleton) done. The phone page starts the mic and motion sensors, forwards every sharp sound it hears, and has a "Send test hit" button and a 1-minute prompted self-test. The stage page shows the QR join card, whether the phone is connected (heartbeat every 2 s), and each event, with a short synthesised knock. The laptop logs every event to `data/events-<date>.jsonl`.
+  - Live self-test (iPhone, paper next to the phone): taps heard exactly once 6 of 6, flicks 6 of 6, 47–61 ms phone listening delay. Scratch and rub trigger only 0–3 onsets in 3 s, so they need their own window-based path, as planned.
+- Phase 1 recorder and analysis built; waiting for recordings.
+  - **Recorder** (phone page, "Record a session"): prompts in random order, full = 10 tap, 10 flick, 4 × 3 s scratch, 4 × 3 s rub, 4 × 3 s keep still (~2 min); short = half. Raw mic audio streams to `data/sessions/<id>/audio.pcm16` (local only) with `meta.json` holding the prompt times and motion readings, all as sample numbers on the audio's own clock. The laptop stays silent while recording.
+  - **Recording plan:** 2 full sessions with the paper next to the phone, 2 short with the phone on an open notebook, 2 short with the phone on a loose A4 sheet. The phone ticks them off.
+  - **Examples** (`tools/phase1.js`): taps and flicks = the window at the strongest onset during the prompt; scratch, rub and quiet = a window every 50 ms from 300 ms after "now", plus every onset inside those prompts (what the hit path would see). Windows of 150 ms and 50 ms.
+  - **Feature sets:** mic (Desk Band band energies), mic + accel, mic + texture (centroid, flatness, roll-off, ZCR, loudness shape, 500 ms rhythm), all three.
+  - **Scoring:** train on one session, test on another, both ways. Balanced accuracy (average of the 5 per-class hit rates), confusion matrix, learning curve, setup comparison and setup transfer.
 
 ---
 
