@@ -117,7 +117,11 @@
   const volGain = () => { const v = +$("vol").value / 100; return v * v; }; // slider feels more even squared
   $("vol").oninput = () => {
     $("volTxt").textContent = `· ${$("vol").value}%`;
-    if (run) { run.gain.gain.setTargetAtTime(volGain(), run.ctx.currentTime, 0.05); logEv(run, { ev: "vol", v: +$("vol").value }); }
+    if (!run) return;
+    run.gain.gain.setTargetAtTime(volGain(), run.ctx.currentTime, 0.05);
+    // Every echo, the speaker's own sound included, gets louder or quieter with the volume, so the measured
+    // "empty table" no longer matches. (On the iPhone a volume change after measuring pinned the hand at 2 cm.)
+    remeasure(run, "volume");
   };
   $("vol").oninput();
 
@@ -265,7 +269,7 @@
     const l = r.last;
     if (!l) return;
     const heard = l.snrDb >= Sonar.HEARD_DB;
-    $("status").textContent = r.countdown ? `Take your hand away… ${r.countdown}`
+    $("status").textContent = r.countdown ? `${r.why === "volume" ? "Volume changed: re-measuring the table. " : ""}Take your hand away… ${r.countdown}`
       : l.learning ? "Keep your hand away: measuring the empty table…"
       : !heard ? "Can't hear the chirp: volume up, silent mode off" : "Ready: hand above the bottom edge of the phone";
     $("status").classList.toggle("learn", l.learning || !heard);
@@ -288,22 +292,22 @@
     $("saved").className = r.saveFails ? "bad" : "";
   }
 
-  // Re-measure only when asked, after a 2 s countdown so the hand that tapped has time to move away
-  $("relearn").onclick = () => {
-    const r = run;
-    if (!r || r.countdown) return;
-    r.countdown = 2;
+  // Re-measure only when asked (or after a volume change), after a 2 s countdown so the hand has time to move
+  // away. Asking again during the countdown (e.g. still dragging the volume slider) starts it again.
+  function remeasure(r, why) {
+    clearTimeout(r.cdTimer);
+    r.countdown = 2; r.why = why;
     $("relearn").disabled = true;
     const tick = () => {
       if (run !== r) return;
-      if (--r.countdown > 0) return void setTimeout(tick, 1000);
-      r.countdown = 0;
+      if (--r.countdown > 0) { r.cdTimer = setTimeout(tick, 1000); return; }
       r.sonar.relearn(); r.learntAt = null;
-      logEv(r, { ev: "remeasure" });
+      logEv(r, { ev: "remeasure", why, vol: +$("vol").value });
       $("relearn").disabled = false;
     };
-    setTimeout(tick, 1000);
-  };
+    r.cdTimer = setTimeout(tick, 1000);
+  }
+  $("relearn").onclick = () => { if (run && !run.countdown) remeasure(run, "button"); };
 
   $("stop").onclick = () => {
     const r = run;

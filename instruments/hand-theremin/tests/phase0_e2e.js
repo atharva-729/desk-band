@@ -71,6 +71,11 @@ const { launch, startServer, wait } = require("./cdp");
     check(await phone.until(`!__ht.last.learning`, 3000) && (await phone.js(`__ht.sonar.relearns`)) === 1, "and goes back to tracking");
     check(phone.errors.length === 0 && stage.errors.length === 0, "no page errors " + JSON.stringify([...phone.errors, ...stage.errors]));
 
+    // Changing the volume after the table was measured: re-measures (after the countdown)
+    await phone.js(`(() => { const v = document.getElementById("vol"); v.value = 60; v.dispatchEvent(new Event("input")); })()`);
+    check(await phone.until(`/Volume changed/.test(document.getElementById("status").textContent)`, 1000), "volume change -> 're-measuring the table' countdown");
+    check(await phone.until(`__ht.sonar.relearns === 2`, 4000), "and the table is measured again at the new volume");
+
     // Session saved on the laptop, and the replay tool reads it back
     const sid = await phone.js(`__ht.sid`);
     await phone.click("#stop");

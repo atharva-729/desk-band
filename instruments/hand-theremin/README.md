@@ -126,6 +126,18 @@ Distances are the sonar's own estimate; nothing was checked against a ruler yet.
 - **The phone kept up:** 47 echo profiles a second, no dropped audio in 75 s, chirp heard 38–51 dB above the floor at 30%
   volume. Peak mic level was −60 dBFS with the hand away and −51 dBFS with it close, so there's headroom to turn the volume up.
 
+**Third iPhone run, 2026-11-19, 100% volume (109 s: book, then hand; `results/2026-11-19_volume-100_*`).** The chirp
+was not audible to Atharva at 100%.
+- **Volume trap:** the volume went from 30% to 100% after the table was measured, so the hand read a flat 2.1 cm until
+  Re-measure was tapped (0–18 s). Fixed: changing the volume now re-measures the table after the 2 s countdown.
+- **Book:** a steady lift from 15 to **36 cm**, found in 50–100% of frames (about 25 cm at 30% volume).
+- **Hand:** 3–14 cm again, then it drops out: **the same ceiling as at 30%.**
+- **Why more volume didn't help the hand:** the speaker's own sound came in 21 dB louder, but the "change" on an empty
+  stretch of the map (15–30 cm, nothing there) stayed −13 to −24 dB relative to it, the same as at 30%. So the floor
+  isn't mic hiss. It's echoes that change on their own (arm and body shifting, air, the room), and they scale with the
+  volume like the hand does. A hand's echo sinks to that level at about 13–15 cm. The book is a bigger reflector and
+  stays above it to about 36 cm.
+
 ### CHECKPOINT 0
 - The echo-map check result.
 - The commands to run it.
