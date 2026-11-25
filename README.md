@@ -76,7 +76,10 @@ GitHub Pages ([`docs/play/`](docs/play/)), so anyone can play them, in the same 
 - **In a video call:** join from the laptop, share the stage **tab with its sound** (Meet: Present → A tab → "Also share tab audio").
   Never join the call on a phone that's playing: the call app takes over its microphone, and the instrument goes deaf.
   People in the call can scan the code off their screen and play the stage too.
-- **Theremin on its own:** open `play/theremin.html` with no room and the phone plays the notes itself.
+- **Theremin:** the phone is only the sonar, at 100% volume, as in the laptop version. The stage turns its heights into notes
+  (lowest note 2 cm above the phone, highest 24 cm; Easy notes or Glide, theremin or marimba voice, buttons on its card).
+  A first online build also played the music on the phone and let the phone set its own low and high heights; on a real
+  iPhone a book then stopped reading above about 14 cm and a squeezed range left only 2 notes, so that was reverted.
 
 **How the link works.** No server of ours. Phones and the stage meet on a free public MQTT broker (HiveMQ, falling back to
 Mosquitto's test broker) over secure WebSocket, using the room code in the QR. The MQTT client is about 150 lines of plain JS

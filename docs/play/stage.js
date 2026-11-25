@@ -127,9 +127,13 @@
       if (m.on && m.midi != null && !p.silent) { const [v, b] = vibratoFor(m.off, m.rollMode); p.voice.set(m.midi, m.level || 0, v, b); }
       else p.voice.quiet();
     } else {
-      p.voice.set({ gate: !!m.g && !p.silent && m.midi != null, midi: m.midi, note: m.note }, m.voice || "theremin", m.mode || "easy");
+      p.voice.set(p.silent ? { gate: false } : p.out, p.tvoice, p.mapper.o.mode);
     }
   }
+  // Theremin settings live on the stage (as in the laptop version): one choice for every theremin card, remembered.
+  const thStore = { get(k, d) { try { const v = localStorage.getItem("pb-th-" + k); return v == null ? d : v; } catch { return d; } },
+                    set(k, v) { try { localStorage.setItem("pb-th-" + k, v); } catch {} } };
+  const TH_LOW = 2, TH_HIGH = 24;   // lowest note 2 cm above the phone, highest 24 cm; every note gets at least 3 cm
 
   // Test sound: a short flute phrase on its own voice
   let demo = null;
@@ -156,8 +160,20 @@
     if (m.i === "flute") {
       p.el.innerHTML = head + `<div class="pnote">–</div><div class="ladder">${"<div></div>".repeat(8)}</div><div class="meter"><i></i></div><div class="psub"></div>`;
     } else {
-      p.el.innerHTML = head + `<div class="trow"><div class="pnote">–</div><div class="tcm"></div></div><canvas class="zones"></canvas><canvas class="map"></canvas><div class="psub"></div>`;
+      p.el.innerHTML = head + `<div class="trow"><div class="pnote">–</div><div class="tcm"></div></div><canvas class="zones"></canvas><canvas class="map"></canvas>` +
+        `<div class="tctl"><span class="seg"><button data-m="easy">Easy notes</button><button data-m="glide">Glide</button></span>` +
+        `<span class="seg"><button data-v="theremin">Theremin voice</button><button data-v="marimba">Marimba</button></span></div><div class="psub"></div>`;
       p.zc = p.el.querySelector("canvas.zones");
+      p.mapper = new TH.Mapper({ low: TH_LOW, high: TH_HIGH, mode: thStore.get("mode", "easy") });
+      p.tvoice = thStore.get("voice", "theremin");
+      p.out = { gate: false };
+      const segs = () => {
+        p.el.querySelectorAll("[data-m]").forEach((b) => b.classList.toggle("on", b.dataset.m === p.mapper.o.mode));
+        p.el.querySelectorAll("[data-v]").forEach((b) => b.classList.toggle("on", b.dataset.v === p.tvoice));
+      };
+      p.el.querySelectorAll("[data-m]").forEach((b) => { b.onclick = () => { p.mapper.o.mode = b.dataset.m; p.mapper.zone = -1; thStore.set("mode", b.dataset.m); segs(); }; });
+      p.el.querySelectorAll("[data-v]").forEach((b) => { b.onclick = () => { p.tvoice = b.dataset.v; thStore.set("voice", b.dataset.v); segs(); }; });
+      segs();
     }
     p.q = (sel) => p.el.querySelector(sel);
     p.q(".mute").onclick = () => { p.muted = !p.muted; p.q(".mute").textContent = p.muted ? "Muted" : "Mute"; p.q(".mute").classList.toggle("muted", p.muted); if (p.gain) p.gain.gain.setTargetAtTime(p.muted ? 0 : 1, ctx.currentTime, 0.03); };
@@ -182,10 +198,17 @@
     if (m.t !== "s" || (m.i !== "flute" && m.i !== "theremin")) return;
     const p = getPlayer(id, m);   // (one phone's messages arrive in order: MQTT over one connection keeps it)
     p.last = m; p.seen = performance.now(); p.silent = false;
-    if (p.inst === "theremin" && m.cols && m.rows) {
-      if (!p.map || p.map.rows !== m.rows) p.map = new Sonar.EchoMap(p.q("canvas.map"), m.rows, m.cpr, 200);
-      for (const [b64, h] of m.cols) p.map.push({ change: Sonar.fromB64(b64), hand: h });
-      p.cols += m.cols.length;
+    if (p.inst === "theremin") {
+      // Every echo reading's height goes through the note mapper with its real time (now minus its age), as the
+      // laptop version did: median of 3, smoothing, note zones with hysteresis, short dropouts hold the note.
+      const now = performance.now();
+      if (m.rows && (!p.map || p.map.rows !== m.rows)) p.map = new Sonar.EchoMap(p.q("canvas.map"), m.rows, m.cpr, 200);
+      for (const [b64, h, a] of m.cols || []) {
+        if (p.map) p.map.push({ change: Sonar.fromB64(b64), hand: h });
+        p.out = p.mapper.update(m.ln ? null : h, now - (a || 0));
+      }
+      if (m.stopped || !(m.cols || []).length) p.out = p.mapper.update(null, now);
+      p.cols += (m.cols || []).length;
     }
     sound(p);
   }
@@ -195,7 +218,7 @@
     const now = performance.now();
     for (const p of players.values()) {
       const quiet = now - p.seen > SILENT_MS;
-      if (quiet && !p.silent) { p.silent = true; sound(p); }
+      if (quiet && !p.silent) { p.silent = true; if (p.mapper) { p.mapper.zone = -1; p.out = { gate: false }; } sound(p); }
       p.el.classList.toggle("stale", quiet);
       if (now - p.seen > GONE_MS) removePlayer(p);
     }
@@ -217,21 +240,23 @@
       : `${m.scale === "pentatonic" ? "Pentatonic" : "Song mode (C major)"} · turn for ${m.rollMode === "bend" ? "a bend" : "vibrato"}` + (m.step == null ? " · range not set on the phone yet" : "");
   }
   function drawTheremin(p) {
-    const m = p.last, on = !!(m.g && !p.silent);
-    p.q(".pnote").textContent = on ? m.name : "–"; p.q(".pnote").classList.toggle("on", on);
-    p.q(".tcm").textContent = on ? `${m.cm.toFixed(1)} cm` : m.ln ? "measuring the table…" : "no book";
+    const m = p.last, o = p.out, on = !!(o.gate && !p.silent);
+    p.q(".pnote").textContent = on ? o.name : "–"; p.q(".pnote").classList.toggle("on", on);
+    p.q(".tcm").textContent = on ? `${o.cm.toFixed(1)} cm` : m.ln ? "measuring the table…" : "no book";
     p.q(".psub").textContent = p.silent ? "not sending (screen locked or stopped?)" : m.stopped ? "sonar stopped on the phone"
       : !m.heard ? "the phone can't hear its chirp: volume up, silent mode off"
-      : `${m.mode === "glide" ? "Glide" : "Easy notes"} · ${m.voice === "marimba" ? "marimba" : "theremin voice"} · low ${m.lo} cm, high ${m.hi} cm`;
+      : m.clip ? "the phone's mic is clipping: bring its sonar volume down a little"
+      : `lowest note ${TH_LOW} cm above the phone, highest ${TH_HIGH} cm · sonar volume ${m.vol}%`;
+    const pm = { name: o.name, note: o.note, pos: o.pos, zn: p.mapper.active, mode: p.mapper.o.mode };
     // zone bar
     const zc = p.zc, zg = zc.getContext("2d"), d = devicePixelRatio || 1, W = zc.clientWidth, H = zc.clientHeight;
     if (zc.width !== Math.round(W * d)) { zc.width = Math.round(W * d); zc.height = Math.round(H * d); }
     zg.setTransform(d, 0, 0, d, 0, 0); zg.clearRect(0, 0, W, H);
     zg.font = "12px -apple-system, system-ui, sans-serif"; zg.textAlign = "center"; zg.textBaseline = "middle";
-    const notes = m.zn || [], N = notes.length;
-    if (m.mode !== "glide" && N) {
+    const notes = pm.zn || [], N = notes.length;
+    if (pm.mode !== "glide" && N) {
       for (let k = 0; k < N; k++) {
-        const x = k / N * W, w = W / N, lit = on && m.note === k;
+        const x = k / N * W, w = W / N, lit = on && pm.note === k;
         zg.fillStyle = lit ? p.color : k % 2 ? "#1b1e27" : "#20242f"; zg.fillRect(x + 1, 0, w - 2, H);
         zg.fillStyle = lit ? "#0b0c10" : "#8b90a3"; zg.fillText(TH.midiName(notes[k]), x + w / 2, H / 2);
       }
@@ -240,7 +265,7 @@
       zg.fillStyle = grd; zg.fillRect(0, 0, W, H);
       zg.fillStyle = "#eef0f6"; zg.fillText("low", 20, H / 2); zg.fillText("high", W - 22, H / 2);
     }
-    if (on && m.pos != null) { zg.fillStyle = "#ffffff"; zg.fillRect(m.pos * W - 2, 0, 4, H); }
+    if (on && pm.pos != null) { zg.fillStyle = "#ffffff"; zg.fillRect(pm.pos * W - 2, 0, 4, H); }
     if (p.map) p.map.draw("change");
   }
   // Card text on a timer (keeps going when the tab is in the background, e.g. behind the video call that shares it);
