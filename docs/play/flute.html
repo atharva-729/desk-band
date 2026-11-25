@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Tilt Flute · Phone</title>
+<link rel="stylesheet" href="phone.css">
+<style>
+  .ladder { position:relative; display:grid; grid-template-columns:repeat(8, 1fr); gap:4px; margin:10px 0; }
+  .ladder div { height:44px; border-radius:8px; background:#11131a; border:2px solid var(--line); display:flex;
+                align-items:center; justify-content:center; font-weight:700; color:var(--dim); }
+  .ladder div.cur { background:var(--accent); color:#14151a; }
+  .ladder div.cur.blow { background:var(--blow); border-color:var(--blow); }
+  .ladder .pos { position:absolute; top:-6px; bottom:-6px; width:3px; margin-left:-1px; background:var(--ink); border:0; border-radius:2px; height:auto; }
+  .bignote { font-size:96px; font-weight:800; line-height:1; letter-spacing:-1px; }
+  .overlay { position:fixed; inset:0; background:var(--bg); padding:20px; display:flex; flex-direction:column; justify-content:center; z-index:5; }
+  .prompt { font-size:30px; font-weight:800; text-align:center; line-height:1.2; }
+  .hint { text-align:center; color:var(--dim); margin-top:8px; }
+  .bar { height:8px; background:#0a0b0e; border-radius:4px; overflow:hidden; margin:16px 0; }
+  .bar i { display:block; height:100%; width:0; background:var(--ok); }
+</style>
+</head>
+<body>
+  <div class="link" id="link"><i></i><span id="linkTxt">–</span></div>
+  <h1>Tilt Flute</h1>
+  <div class="sub">Hold it sideways like a flute: tilt for the note, blow on the bottom edge to play.</div>
+
+  <div id="intro" class="card">
+    <p style="margin-top:0">Tap Start and allow motion and the microphone. Then show it your lowest and highest note (about 10 seconds).</p>
+    <button id="start" class="primary">Start</button>
+  </div>
+
+  <div id="main" class="hidden">
+    <button id="micWarn" class="warn hidden">Mic stopped: tap to turn it back on</button>
+    <div class="card hidden" id="needCal">
+      <p style="margin-top:0">First, show it your <b>lowest</b> and <b>highest</b> note: tilt to each and hold still for a moment.</p>
+      <button id="calFirst" class="primary">Set my range</button>
+    </div>
+    <div class="card" style="text-align:center">
+      <div class="bignote" id="noteBig">–</div>
+      <div class="small"><span id="posTxt">not set up</span> · <span id="breathTxt">–</span></div>
+      <div class="ladder" id="ladder"></div>
+      <div class="meter"><i id="breathBar"></i></div>
+    </div>
+    <div class="row">
+      <select id="scale"><option value="major">Song mode (C major)</option><option value="pentatonic">Pentatonic (can't sound bad)</option></select>
+    </div>
+    <div class="row">
+      <select id="rollMode"><option value="vibrato">Turn = vibrato</option><option value="bend">Turn = bend ±1</option></select>
+      <button id="calBtn">Reset range</button>
+    </div>
+    <div class="card small">
+      Blow across the bottom edge of the phone, where the mic is. Quiet rooms work best. Keep the screen on: the mic stops when the phone locks.
+      <div id="info" style="margin-top:6px"></div>
+    </div>
+  </div>
+
+  <div id="overlay" class="overlay hidden">
+    <div class="small" id="ovTop" style="text-align:center"></div>
+    <div class="prompt" id="ovPrompt"></div>
+    <div class="hint" id="ovHint"></div>
+    <div class="bar"><i id="ovBarFill"></i></div>
+    <button id="ovStop" style="margin-top:20px">Cancel</button>
+  </div>
+
+<script src="relay.js"></script>
+<script src="phonelink.js"></script>
+<script src="flute-core.js"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const C = window.FluteCore;
+  const STEPS = 8, HYST = 2.5, SMOOTH_MS = 40, SEND_MS = 33;
+  const FAST = new URLSearchParams(location.search).has("fast"); // tests: short prompts
+  const link = new PhoneLink("flute");
+  window.__link = link; // for tests
+
+  const s = { g: null, gs: null, feat: null, breath: { on: false, level: 0 } };
+  const smoother = new C.VecSmoother(SMOOTH_MS);
+  let cal = null, stepper = null, tilt = null, step = null, mic = null, feats = null, det = null;
+  try { cal = JSON.parse(localStorage.getItem("tiltflute.cal") || "null"); } catch {}
+  let scale = "major", rollMode = "vibrato";
+  try { scale = localStorage.getItem("tiltflute.scale") || scale; rollMode = localStorage.getItem("tiltflute.roll") || rollMode; } catch {}
+  $("scale").value = scale; $("rollMode").value = rollMode;
+
+  const nameOf = (k) => C.noteName(C.noteFor(k, scale)).replace(/\d+$/, "");
+  function buildLadder() { $("ladder").innerHTML = Array.from({ length: STEPS }, (_, i) => `<div>${nameOf(i)}</div>`).join("") + '<div class="pos"></div>'; }
+  buildLadder();
+  $("scale").addEventListener("change", () => { scale = $("scale").value; try { localStorage.setItem("tiltflute.scale", scale); } catch {} buildLadder(); send(true); });
+  $("rollMode").addEventListener("change", () => { rollMode = $("rollMode").value; try { localStorage.setItem("tiltflute.roll", rollMode); } catch {} send(true); });
+  function applyCal(c) {
+    cal = c;
+    if (!cal) return;
+    Object.assign(cal, C.calibrate(cal.gLow, cal.gHigh), { gLow: cal.gLow, gHigh: cal.gHigh });
+    stepper = new C.Stepper(STEPS, cal.span, HYST);
+    $("needCal").classList.add("hidden");
+  }
+
+  // ---------- sensors ----------
+  $("start").addEventListener("click", async () => {
+    let oriOK = typeof DeviceOrientationEvent !== "undefined", motOK = typeof DeviceMotionEvent !== "undefined";
+    try { if (oriOK && typeof DeviceOrientationEvent.requestPermission === "function") oriOK = (await DeviceOrientationEvent.requestPermission()) === "granted"; } catch { oriOK = false; }
+    try { if (motOK && typeof DeviceMotionEvent.requestPermission === "function") motOK = (await DeviceMotionEvent.requestPermission()) === "granted"; } catch { motOK = false; }
+    window.addEventListener("devicemotion", (e) => {
+      const g = e.accelerationIncludingGravity;
+      if (!g || g.x == null) return;
+      s.g = [g.x, g.y, g.z]; s.gs = smoother.push(s.g, performance.now());
+      if (cal) { tilt = C.tiltAngles(s.gs, cal); const was = step; step = stepper.update(tilt.pos); if (step !== was) send(true); }
+    });
+    try { await startMic(); } catch (err) {
+      alert("Could not start the microphone: " + err.message + "\n\nAllow the microphone for this page and try again.");
+      return;
+    }
+    try { if ("wakeLock" in navigator) await navigator.wakeLock.request("screen"); } catch {}
+    $("intro").classList.add("hidden"); $("main").classList.remove("hidden");
+    $("info").textContent = `${mic.label} · ${(mic.ctx.sampleRate / 1000).toFixed(1)} kHz · motion ${motOK ? "on" : "OFF (allow motion access)"}`;
+    if (cal) applyCal(cal); else { $("needCal").classList.remove("hidden"); }
+    setInterval(() => send(false), SEND_MS);
+    setInterval(draw, 50);
+  });
+
+  async function startMic() {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: {
+      echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 } });
+    const ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: "interactive" });
+    await ctx.resume();
+    const src = ctx.createMediaStreamSource(stream);
+    const proc = ctx.createScriptProcessor(256, 1, 1);
+    feats = new C.AudioFeatures(ctx.sampleRate); if (!det) det = new C.BreathDetector();
+    lastAudioMs = performance.now();
+    proc.onaudioprocess = (e) => {
+      lastAudioMs = performance.now();
+      feats.push(e.inputBuffer.getChannelData(0), performance.now(), (f) => {
+        const was = s.breath.on;
+        s.feat = f; s.breath = det.push(f);
+        if (s.breath.on !== was) send(true);
+      });
+    };
+    src.connect(proc); proc.connect(ctx.destination); // output stays silent
+    mic = { stream, ctx, src, proc, label: stream.getAudioTracks()[0].label || "mic" };
+  }
+  // The iPhone mic sometimes goes silent (screen lock, app switch, or on its own). Spot it, say so, restart from a tap.
+  let lastAudioMs = 0, fixing = false;
+  const micOK = () => !!mic && mic.ctx.state === "running" && performance.now() - lastAudioMs < 700 &&
+    mic.stream.getAudioTracks().every((t) => t.readyState === "live");
+  function micHealth() {
+    const ok = !mic || micOK();
+    $("micWarn").classList.toggle("hidden", ok);
+    if (!ok && mic.ctx.state !== "running" && !fixing) mic.ctx.resume().catch(() => {});
+    return ok;
+  }
+  async function fixMic() {
+    if (fixing || !mic || micOK()) return;
+    fixing = true;
+    try {
+      await mic.ctx.resume();
+      await new Promise((r) => setTimeout(r, 400));
+      if (!micOK()) { mic.stream.getTracks().forEach((t) => t.stop()); try { await mic.ctx.close(); } catch {} await startMic(); }
+    } catch (err) { $("info").textContent = "Mic could not restart: " + err.message + ". Reload the page."; }
+    finally { fixing = false; micHealth(); }
+  }
+  document.addEventListener("click", fixMic, true);
+
+  // ---------- stream to the stage ----------
+  // A steady 30 a second, plus straight away when the note or breath changes (at most one extra per 15 ms).
+  let lastSend = 0;
+  const r2 = (v) => (v == null ? null : Math.round(v * 100) / 100);
+  function send(now) {
+    const t = performance.now();
+    if (now && t - lastSend < 15) return;
+    lastSend = t;
+    const on = s.breath.on && micOK() && step != null;
+    link.send({ t: "s", midi: step == null ? null : C.noteFor(step, scale), step, scale, rollMode,
+      on, level: on ? r2(s.breath.level) : 0, off: tilt && r2(tilt.off), pos: tilt && cal ? r2(tilt.pos / cal.span) : null, rtt: link.rtt });
+  }
+
+  function draw() {
+    const ok = micHealth();
+    const st = link.status();
+    $("link").className = "link " + st.state; $("linkTxt").textContent = st.text;
+    $("noteBig").textContent = step == null ? "–" : nameOf(step);
+    $("noteBig").style.color = s.breath.on ? "var(--blow)" : "";
+    $("posTxt").textContent = cal ? (step == null ? "–" : `note ${step + 1} of ${STEPS}`) : "range not set";
+    $("breathTxt").textContent = !ok ? "mic off" : s.breath.on ? "BLOWING" : "blow to play";
+    $("breathTxt").style.color = s.breath.on ? "var(--blow)" : "";
+    $("breathBar").style.width = (s.breath.level * 100).toFixed(0) + "%";
+    const cells = $("ladder").children;
+    for (let i = 0; i < STEPS; i++) { cells[i].classList.toggle("cur", step === i); cells[i].classList.toggle("blow", step === i && s.breath.on); }
+    const pos = cells[STEPS];
+    if (tilt && cal) { pos.style.display = ""; pos.style.left = Math.max(0, Math.min(100, (tilt.pos / cal.span) * 100)) + "%"; }
+    else pos.style.display = "none";
+  }
+
+  // ---------- range (calibration): hold still at the lowest note, then the highest ----------
+  let stopped = false;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const overlay = (on) => $("overlay").classList.toggle("hidden", !on);
+  $("ovStop").addEventListener("click", () => { stopped = true; });
+  async function capture(label) {
+    $("ovTop").textContent = "Set my range"; $("ovPrompt").textContent = `Tilt to your ${label} note`; $("ovHint").textContent = "Hold it like a flute, then keep still";
+    const t0 = performance.now(), prep = FAST ? 600 : 2500;
+    while (performance.now() - t0 < prep) { if (stopped) return null; $("ovBarFill").style.width = "0%"; await sleep(30); }
+    $("ovPrompt").textContent = "Hold still…"; $("ovHint").textContent = `measuring your ${label} note`;
+    const got = [], t1 = performance.now();
+    while (performance.now() - t1 < 1000) {
+      if (stopped) return null;
+      if (s.g) got.push(s.g.slice());
+      $("ovBarFill").style.width = (((performance.now() - t1) / 1000) * 100).toFixed(0) + "%";
+      await sleep(20);
+    }
+    if (got.length < 5) { alert("No motion readings: allow motion access (reload the page and tap Start again)."); return null; }
+    return [0, 1, 2].map((i) => got.reduce((a, g) => a + g[i], 0) / got.length);
+  }
+  async function calibrateNow() {
+    stopped = false; overlay(true);
+    const gLow = await capture("LOWEST"); if (!gLow) return overlay(false);
+    const gHigh = await capture("HIGHEST"); if (!gHigh) return overlay(false);
+    overlay(false);
+    const c = C.calibrate(gLow, gHigh);
+    if (c.span < 15) { alert(`The two positions are only ${c.span.toFixed(0)}° apart. Try again with a bigger tilt (30–60° works well).`); return; }
+    applyCal({ gLow, gHigh });
+    try { localStorage.setItem("tiltflute.cal", JSON.stringify({ gLow, gHigh })); } catch {}
+  }
+  $("calBtn").addEventListener("click", calibrateNow);
+  $("calFirst").addEventListener("click", calibrateNow);
+  setInterval(() => { const st = link.status(); $("link").className = "link " + st.state; $("linkTxt").textContent = st.text; }, 500);
+})();
+</script>
+</body>
+</html>

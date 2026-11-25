@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Hand Theremin · Phone</title>
+<link rel="stylesheet" href="phone.css">
+<style>
+  body { padding-bottom:96px; }
+  .hand { font-size:40px; font-weight:800; font-variant-numeric:tabular-nums; }
+  .hand.off { color:var(--dim); }
+  #status { font-weight:600; } #status.learn { color:var(--warn); }
+  canvas { width:100%; display:block; border-radius:8px; }
+  #map { height:180px; } #zones { height:44px; margin-top:8px; }
+  #stop { position:fixed; left:16px; right:16px; bottom:16px; width:auto; background:var(--stop); border-color:var(--stop); color:#fff; font-size:18px;
+          padding:18px; box-shadow:0 6px 24px rgba(0,0,0,.5); }
+  .big { display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
+  #note { font-size:40px; font-weight:800; color:var(--accent); } #note.off { color:var(--dim); }
+  ul { margin:6px 0 0; padding-left:18px; } li { margin:3px 0; }
+</style>
+</head>
+<body>
+  <div class="link" id="link"><i></i><span id="linkTxt">–</span></div>
+  <h1>Hand Theremin</h1>
+  <div class="sub">Sonar, no camera: the phone chirps above hearing and times the echo off a book or your hand.</div>
+
+  <div id="intro" class="card">
+    <ul>
+      <li>Lay the phone <b>flat on the table, screen up</b>. Volume up, silent mode off.</li>
+      <li>Play over the phone's <b>bottom edge</b> (the speaker end). A <b>book held flat</b> works best (up to about 35 cm); a hand reaches about 14 cm.</li>
+      <li>After Start, keep everything away from the phone for 1 second while it measures the empty table.</li>
+    </ul>
+    <p class="small">Most adults can't hear the 18–21 kHz chirp, but some people (especially younger ones) and pets can. If it bothers anyone, tap Stop. Don't use headphones.</p>
+    <button id="start" class="primary">Start sonar</button>
+  </div>
+
+  <div id="main" class="hidden">
+    <button id="resume" class="warn hidden">Sound paused: tap to resume</button>
+    <div class="card">
+      <div id="status" class="learn">Keep everything away: measuring the empty table…</div>
+      <div class="big"><div class="hand off" id="hand">–</div><div id="note" class="off">–</div></div>
+      <canvas id="zones"></canvas>
+      <div class="row" style="margin-bottom:0">
+        <button id="setLow">Set low note here</button>
+        <button id="setHigh">Set high note here</button>
+      </div>
+      <div class="small" id="range"></div>
+    </div>
+    <div class="card">
+      <div class="row seg" style="margin-top:0"><button id="pEasy" class="on">Easy (notes)</button><button id="pGlide">Theremin (glide)</button></div>
+      <div class="row seg"><button id="vTher" class="on">Theremin voice</button><button id="vMar">Marimba</button></div>
+      <label class="small" style="display:flex;gap:8px;align-items:center;margin-top:4px">
+        <input type="checkbox" id="local"> Also play the sound on this phone</label>
+      <div class="small" id="localHelp"></div>
+    </div>
+    <div class="card">
+      <canvas id="map"></canvas>
+      <div class="small" style="margin-top:6px">Echo map: up = farther above the phone, left → right = the last 8 s. Bright = something moved; the green dash is where it thinks the book is.</div>
+      <div class="row"><button id="relearn">Re-measure table</button></div>
+    </div>
+    <div class="card">
+      <div class="lbl">Sonar volume <span id="volTxt"></span></div>
+      <input type="range" id="vol" min="0" max="100" value="60">
+      <div class="small">Lowest that still says "Chirp heard: yes". Changing it re-measures the table.</div>
+      <table style="margin-top:8px">
+        <tr><td>chirp heard</td><td id="heard">–</td></tr>
+        <tr><td>echo readings</td><td id="fps">–</td></tr>
+        <tr><td>sent to the stage</td><td id="sendHz">–</td></tr>
+      </table>
+      <div class="small" id="info"></div>
+    </div>
+  </div>
+
+  <button id="stop" class="hidden">Stop sonar</button>
+
+<script src="relay.js"></script>
+<script src="phonelink.js"></script>
+<script src="sonar.js"></script>
+<script src="theremin.js"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const SIM = new URLSearchParams(location.search).has("sim"); // tests only: a pretend mic with a pretend hand
+  const SEND_MS = 40;          // 25 messages a second; each carries every echo reading since the last one
+  const MAP_CM = 40, POOL = 2; // the stage's echo map: up to 40 cm, two rows pooled into one (7 mm)
+  const link = new PhoneLink("theremin");
+  const solo = !link.room;
+  window.__link = link;
+  let run = null;
+
+  const store = { get(k, d) { try { const v = localStorage.getItem("pbt-" + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+                  set(k, v) { try { localStorage.setItem("pbt-" + k, JSON.stringify(v)); } catch {} } };
+  const mapper = new Theremin.Mapper({ low: store.get("low", 2), high: store.get("high", 24), mode: store.get("mode", "easy") });
+  let voice = store.get("voice", "theremin"), out = { gate: false };
+  $("vol").value = store.get("vol", 60);
+
+  // Sound on the phone: on by default when there's no stage, off when there is (the stage plays it).
+  $("local").checked = solo ? true : store.get("local", false);
+  $("localHelp").textContent = solo ? "No stage: the phone plays the notes itself." : "The stage plays the notes. Tick this to hear yourself on the phone too (no lag, handy when you're far from the stage).";
+  $("local").onchange = () => { if (!solo) store.set("local", $("local").checked); localGain(); };
+
+  const setPlayMode = (m) => { mapper.o.mode = m; mapper.zone = -1; store.set("mode", m); $("pEasy").classList.toggle("on", m === "easy"); $("pGlide").classList.toggle("on", m === "glide"); };
+  const setVoice = (v) => { voice = v; store.set("voice", v); $("vTher").classList.toggle("on", v === "theremin"); $("vMar").classList.toggle("on", v === "marimba"); };
+  $("pEasy").onclick = () => setPlayMode("easy"); $("pGlide").onclick = () => setPlayMode("glide");
+  $("vTher").onclick = () => setVoice("theremin"); $("vMar").onclick = () => setVoice("marimba");
+  setPlayMode(mapper.o.mode); setVoice(voice);
+  const showRange = () => { $("range").textContent = `Low note at ${mapper.o.low.toFixed(1)} cm, high note at ${mapper.o.high.toFixed(1)} cm. Hold the book at a height and tap a button to change it.`; };
+  showRange();
+  const cal = (which) => {
+    if (!out.gate) { $("range").textContent = "Hold the book over the phone first, then tap."; return; }
+    const lo = which === "low" ? out.cm : mapper.o.low, hi = which === "high" ? out.cm : mapper.o.high;
+    if (!mapper.setRange(lo, hi)) { $("range").textContent = "Low and high are too close: spread them at least 2 cm apart."; return; }
+    store.set("low", lo); store.set("high", hi); showRange();
+  };
+  $("setLow").onclick = () => cal("low"); $("setHigh").onclick = () => cal("high");
+
+  const rate = (arr) => { const now = performance.now(); while (arr.length && arr[0] < now - 1000) arr.shift(); return arr.length; };
+  const volGain = () => { const v = +$("vol").value / 100; return v * v; };
+  $("vol").oninput = () => {
+    $("volTxt").textContent = `· ${$("vol").value}%`; store.set("vol", +$("vol").value);
+    if (!run) return;
+    run.gain.gain.setTargetAtTime(volGain(), run.ctx.currentTime, 0.05);
+    remeasure(run, "volume");   // every echo changes with the volume, so the empty table no longer matches
+  };
+  $("vol").oninput();
+
+  // The phone's own synth: an octave up and brighter (phone speakers barely play below 500 Hz), behind a limiter so
+  // music plus chirp can't clip. Everything stays far below the sonar's 18 kHz band.
+  function phoneSynth(ctx) {
+    const lim = ctx.createDynamicsCompressor();
+    lim.threshold.value = -4; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.002; lim.release.value = 0.15;
+    const trim = ctx.createGain(); trim.gain.value = 0.85; lim.connect(trim); trim.connect(ctx.destination);
+    const syn = Theremin.Synth(ctx, { out: lim, transpose: 12, cutoff: 5000, triangle: 0.4 });
+    syn.master.gain.value = 0;
+    return syn;
+  }
+  function localGain() { if (run && run.synth) run.synth.master.gain.setTargetAtTime($("local").checked ? 1.9 : 0, run.ctx.currentTime, 0.05); }
+
+  $("start").addEventListener("click", async () => {
+    // iOS: make the AudioContext and ask for the mic inside the tap
+    const AC = window.AudioContext || window.webkitAudioContext;
+    let ctx;
+    try { ctx = new AC({ sampleRate: 48000, latencyHint: "interactive" }); } catch { ctx = new AC({ latencyHint: "interactive" }); }
+    ctx.resume();
+    try { if (navigator.audioSession) navigator.audioSession.type = "play-and-record"; } catch {}
+    let stream = null;
+    if (!SIM) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 } });
+      } catch (err) {
+        ctx.close();
+        alert("Could not start the microphone: " + err.message + "\n\nAllow the microphone for this page and try again.");
+        return;
+      }
+    }
+    await ctx.resume();
+    start(ctx, stream);
+  });
+
+  function start(ctx, stream) {
+    const sonar = new Sonar.Sonar(ctx.sampleRate);
+    const buf = ctx.createBuffer(1, sonar.P, ctx.sampleRate);   // one chirp period (chirp, then silence), looped
+    buf.getChannelData(0).set(sonar.chirp);
+    const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
+    const gain = ctx.createGain(); gain.gain.value = 0; gain.gain.setTargetAtTime(volGain(), ctx.currentTime, 0.05);
+    src.connect(gain); gain.connect(ctx.destination); src.start();
+    const proc = ctx.createScriptProcessor(1024, 1, 1);
+    const sim = SIM ? Sonar.Simulator(sonar, { start: 300, hand: 0.004 }) : null;
+    const mapRows = Math.min(sonar.rows, Math.round(MAP_CM / sonar.cmPerRow) + 1), poolRows = Math.ceil(mapRows / POOL);
+    const r = { ctx, stream, src, gain, proc, sonar, sim, last: null, pending: [], frames: [], learntAt: null, mapRows, poolRows };
+    r.synth = phoneSynth(ctx); localGain();
+    proc.onaudioprocess = (e) => {
+      const x = sim ? sim.next(e.inputBuffer.length, simHand(r)) : e.inputBuffer.getChannelData(0);
+      sonar.push(x, (res) => onFrame(r, res));
+    };
+    if (stream) { r.mic = ctx.createMediaStreamSource(stream); r.mic.connect(proc); }
+    proc.connect(ctx.destination); // output stays silent; WebKit needs it connected to run
+    r.map = new Sonar.EchoMap($("map"), sonar.rows, sonar.cmPerRow, 380);
+    r.timers = [setInterval(() => send(r), SEND_MS), setInterval(() => drawNums(r), 150)];
+    const frame = () => { if (run !== r) return; r.map.draw("change"); drawZones(); requestAnimationFrame(frame); };
+    run = r; window.__ht = r;
+    requestAnimationFrame(frame);
+    try { if ("wakeLock" in navigator) navigator.wakeLock.request("screen").then((l) => (r.lock = l)).catch(() => {}); } catch {}
+    $("intro").classList.add("hidden"); $("main").classList.remove("hidden"); $("stop").classList.remove("hidden");
+    const label = stream ? stream.getAudioTracks()[0].label || "mic" : "simulated mic";
+    $("info").textContent = `${label} · ${(ctx.sampleRate / 1000).toFixed(1)} kHz`;
+  }
+
+  // ?sim only: hand away while the table is learnt, then 10, 20, 30 cm holds, away, and a slow sweep
+  function simHand(r) {
+    if (r.learntAt == null) return null;
+    const t = (performance.now() - r.learntAt) / 1000 % 12;
+    if (t < 1) return null;
+    if (t < 3) return 10; if (t < 5) return 20; if (t < 7) return 30; if (t < 8) return null;
+    return 17.5 + 12.5 * Math.sin((t - 8) / 4 * 2 * Math.PI);
+  }
+
+  function onFrame(r, res) {
+    r.frames.push(performance.now());
+    if (!res.learning && r.learntAt == null) r.learntAt = performance.now();
+    if (res.learning) r.learntAt = null;
+    out = mapper.update(res.learning ? null : res.handCm, performance.now());
+    r.synth.set(out, voice, mapper.o.mode);
+    r.last = res;
+    r.map.push({ change: r.sonar.colChange.slice(), hand: res.handCm });
+    // pooled column for the stage: max of each pair of rows, up to 40 cm
+    const col = new Uint8Array(r.poolRows), c = r.sonar.colChange;
+    for (let k = 0; k < r.mapRows; k++) { const j = (k / POOL) | 0; if (c[k] > col[j]) col[j] = c[k]; }
+    r.pending.push([Sonar.toB64(col), res.handCm == null || res.learning ? null : +res.handCm.toFixed(1)]);
+    if (r.pending.length > 12) r.pending.shift();
+  }
+
+  function send(r) {
+    if (!r.last) return;
+    const l = r.last, cols = r.pending.splice(0);
+    link.send({ t: "s", g: out.gate ? 1 : 0, midi: out.gate ? +out.midi.toFixed(2) : null, note: out.note, name: out.name, pos: out.gate ? +out.pos.toFixed(3) : null,
+      cm: out.gate ? +out.cm.toFixed(1) : null, mode: mapper.o.mode, voice, zn: mapper.active, lo: +mapper.o.low.toFixed(1), hi: +mapper.o.high.toFixed(1),
+      ln: l.learning ? 1 : 0, heard: l.snrDb >= Sonar.HEARD_DB ? 1 : 0, rows: r.poolRows, cpr: +(r.sonar.cmPerRow * POOL).toFixed(4), cols, rtt: link.rtt });
+  }
+
+  function drawNums(r) {
+    const l = r.last, st = link.status();
+    $("link").className = "link " + st.state; $("linkTxt").textContent = st.text;
+    $("resume").classList.toggle("hidden", r.ctx.state === "running");
+    if (!l) return;
+    const heard = l.snrDb >= Sonar.HEARD_DB;
+    $("status").textContent = r.countdown ? `${r.why === "volume" ? "Volume changed: re-measuring. " : ""}Move everything away… ${r.countdown}`
+      : l.learning ? "Keep everything away: measuring the empty table…"
+      : !heard ? "Can't hear the chirp: volume up, silent mode off" : "Ready: hold a book above the bottom edge";
+    $("status").classList.toggle("learn", l.learning || !heard || !!r.countdown);
+    $("hand").textContent = l.learning ? "–" : l.handCm == null ? "nothing" : l.handCm.toFixed(1) + " cm";
+    $("hand").classList.toggle("off", l.handCm == null);
+    $("note").textContent = out.gate ? out.name : "–"; $("note").classList.toggle("off", !out.gate);
+    $("heard").textContent = (heard ? "yes" : "NO: volume up, silent off") + ` (${l.snrDb.toFixed(0)} dB)`;
+    $("heard").className = heard ? "good" : "bad";
+    const f = rate(r.frames); $("fps").textContent = f + " /s"; $("fps").classList.toggle("bad", f < 20);
+    $("sendHz").textContent = solo ? "no stage" : link.rate() + " /s";
+  }
+
+  // zone bar: low height on the left, high on the right; the marker is where the book is
+  const zc = $("zones"), zg = zc.getContext("2d");
+  function drawZones() {
+    const d = devicePixelRatio || 1, W = zc.clientWidth, H = zc.clientHeight;
+    if (zc.width !== Math.round(W * d)) { zc.width = Math.round(W * d); zc.height = Math.round(H * d); }
+    zg.setTransform(d, 0, 0, d, 0, 0); zg.clearRect(0, 0, W, H);
+    const notes = mapper.active, N = notes.length;
+    zg.font = "12px -apple-system, system-ui, sans-serif"; zg.textAlign = "center"; zg.textBaseline = "middle";
+    if (mapper.o.mode === "easy") {
+      for (let k = 0; k < N; k++) {
+        const x = k / N * W, w = W / N, lit = out.gate && out.note === k;
+        zg.fillStyle = lit ? "#5aa8ff" : k % 2 ? "#1b1e27" : "#20242f"; zg.fillRect(x + 1, 0, w - 2, H);
+        zg.fillStyle = lit ? "#0b0c10" : "#8b90a3"; zg.fillText(Theremin.midiName(notes[k]), x + w / 2, H / 2);
+      }
+    } else {
+      const grd = zg.createLinearGradient(0, 0, W, 0); grd.addColorStop(0, "#1d2b6b"); grd.addColorStop(1, "#5aa8ff");
+      zg.fillStyle = grd; zg.fillRect(0, 0, W, H);
+      zg.fillStyle = "#eef0f6"; zg.fillText("low", 20, H / 2); zg.fillText("high", W - 22, H / 2);
+    }
+    if (out.gate) { zg.fillStyle = "#3dd6a3"; zg.fillRect(out.pos * W - 2, 0, 4, H); }
+  }
+
+  // Re-measure only when asked (or after a volume change), after a 2 s countdown so the hand has time to move away.
+  function remeasure(r, why) {
+    clearTimeout(r.cdTimer);
+    r.countdown = 2; r.why = why; $("relearn").disabled = true;
+    const tick = () => {
+      if (run !== r) return;
+      if (--r.countdown > 0) { r.cdTimer = setTimeout(tick, 1000); return; }
+      r.sonar.relearn(); r.learntAt = null; $("relearn").disabled = false;
+    };
+    r.cdTimer = setTimeout(tick, 1000);
+  }
+  $("relearn").onclick = () => { if (run && !run.countdown) remeasure(run, "button"); };
+  $("resume").onclick = () => { if (run) run.ctx.resume(); };
+
+  $("stop").onclick = () => {
+    const r = run;
+    if (!r) return;
+    run = null;
+    r.timers.forEach(clearInterval);
+    link.send({ t: "s", g: 0, midi: null, stopped: 1, cols: [] });
+    r.gain.gain.setTargetAtTime(0, r.ctx.currentTime, 0.02); r.synth.master.gain.setTargetAtTime(0, r.ctx.currentTime, 0.02);
+    setTimeout(() => { try { r.src.stop(); } catch {} r.proc.onaudioprocess = null; if (r.stream) r.stream.getTracks().forEach((t) => t.stop()); r.ctx.close(); }, 150);
+    try { if (r.lock) r.lock.release(); } catch {}
+    $("main").classList.add("hidden"); $("stop").classList.add("hidden"); $("intro").classList.remove("hidden");
+    $("start").textContent = "Start sonar again";
+  };
+  setInterval(() => { if (!run) { const st = link.status(); $("link").className = "link " + st.state; $("linkTxt").textContent = st.text; } }, 500);
+})();
+</script>
+</body>
+</html>

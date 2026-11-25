@@ -4,6 +4,8 @@
 
 **Results write-up:** https://atharva-729.github.io/desk-band/
 
+**Play the flute and theremin online, nothing to install:** https://atharva-729.github.io/desk-band/play/ (see [Play online](#play-online-flute-and-theremin-no-install))
+
 Lay your phone flat on a table and knock the wood around it. The phone listens with its **microphone** and feels the jolt with its **motion sensor**, works out *which spot* you hit and *how hard*, and your laptop plays a drum, dhol or marimba note for that spot. No magnets, no stickers, no extra hardware.
 
 **Status: v0.3, parked (Nov 2026).** It plays, at roughly 75% right by feel on 5 pads (not a measured number: see below). Parked here while other phone-sensor instruments get built in this repo.
@@ -61,6 +63,33 @@ That run used 16 kHz compressed audio, so lossless audio should only help. The b
 **Our angle:** zero accessories, mic plus motion fused, runs in a plain web page, and is meant to work on any iPhone or Android.
 
 ---
+
+## Play online: flute and theremin (no install)
+
+The [Tilt Flute](instruments/tilt-flute/) and [Hand Theremin](instruments/hand-theremin/) also run as plain web pages on
+GitHub Pages ([`docs/play/`](docs/play/)), so anyone can play them, in the same room or from home on a video call.
+
+- **Stage** (any laptop): open https://atharva-729.github.io/desk-band/play/ and click **Start sound**. It makes a room and
+  shows a QR code. All the sound comes from this page.
+- **Phones:** scan the code, pick **Flute** or **Theremin**. Several phones can play at once; each gets a card on the stage
+  with its own voice. No Python, no shared Wi-Fi, no certificate warning: phones on mobile data work too.
+- **In a video call:** join from the laptop, share the stage **tab with its sound** (Meet: Present → A tab → "Also share tab audio").
+  Never join the call on a phone that's playing: the call app takes over its microphone, and the instrument goes deaf.
+  People in the call can scan the code off their screen and play the stage too.
+- **Theremin on its own:** open `play/theremin.html` with no room and the phone plays the notes itself.
+
+**How the link works.** No server of ours. Phones and the stage meet on a free public MQTT broker (HiveMQ, falling back to
+Mosquitto's test broker) over secure WebSocket, using the room code in the QR. The MQTT client is about 150 lines of plain JS
+([`docs/play/relay.js`](docs/play/relay.js)); no library. Phones send only notes and levels (and an optional name); no audio leaves
+the phone. Anyone who has the room code can play on that stage.
+
+**Measured (26 Nov 2026, from India):**
+- Round trip through either broker: about **330 ms**, so phone to stage is about **165 ms** one way (`node tools/play-online/relay_probe.js`).
+  Fine for flute and theremin, too slow for drums. Each card on the stage shows its phone's lag live.
+- Both brokers passed 300 of 300 messages at 30 a second. EMQX's public broker dropped over half at that rate, so it isn't used.
+- Browser test, through the real relay (`node tools/play-online/e2e.js [out-dir]`, needs the internet): a stage plus a
+  flute and a theremin phone at once. Flute 28–32 messages a second reach the stage, theremin 23–26. All 29 checks pass.
+  It proves the plumbing, not how it feels on a real phone.
 
 ## Run it (v0)
 

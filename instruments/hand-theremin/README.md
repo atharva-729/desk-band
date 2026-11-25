@@ -2,6 +2,8 @@
 
 **Hold your hand above the phone to play. Higher hand = higher note. No camera: the phone uses sonar.**
 
+**Play it online, no install:** https://atharva-729.github.io/desk-band/play/ (pages in `docs/play/`; see the root README's "Play online").
+
 The phone lies flat on the table. Its speaker plays a quiet, very high sound (around 18–21 kHz) that most people can't hear, and its microphone listens for the echo off your hand.
 - **How long** the echo takes to come back tells us **how high** your hand is.
 - **How the echo's pitch shifts** (the Doppler effect) tells us **how fast** your hand is moving.

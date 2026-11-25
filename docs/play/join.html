@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Phone Band · Join</title>
+<link rel="stylesheet" href="phone.css">
+<style>
+  .inst { text-align:left; padding:16px; margin:10px 0; display:block; }
+  .inst b { display:block; font-size:20px; margin-bottom:4px; }
+  .inst span { color:var(--dim); font-size:13px; font-weight:400; }
+  .room { font-size:28px; font-weight:800; letter-spacing:3px; }
+</style>
+</head>
+<body>
+  <h1>Phone Band</h1>
+  <div class="sub">Your phone becomes an instrument. The sound plays on the stage (the laptop that showed you the QR code).</div>
+
+  <div class="card" id="roomCard">
+    <div class="lbl">Room</div>
+    <div class="room" id="room">–</div>
+    <div class="small" id="roomHelp"></div>
+    <div id="typeRoom" class="hidden">
+      <div class="row"><input type="text" id="code" placeholder="Room code from the stage, e.g. K7QXM" autocapitalize="characters" autocomplete="off" maxlength="8"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="lbl">Your name on the stage (optional)</div>
+    <div class="row" style="margin-bottom:0"><input type="text" id="name" placeholder="e.g. Sam" maxlength="24" autocomplete="off"></div>
+  </div>
+
+  <button class="inst" id="goFlute"><b>Flute</b><span>Hold the phone sideways like a flute. Tilt it to pick the note, blow on the bottom edge (the mic) to play.</span></button>
+  <button class="inst" id="goTheremin"><b>Theremin</b><span>Lay the phone flat on a table. Move a book (or your hand) up and down above its bottom edge: higher = higher note. It uses sonar, no camera.</span></button>
+
+  <div class="card small">
+    <b style="color:var(--warn)">In a video call:</b> don't join the call on this phone. The call app takes over the microphone and the
+    instrument goes deaf. Join from a laptop (or don't join at all): you'll hear yourself through the stage's shared sound.
+  </div>
+  <div class="small" style="margin-top:14px">No stage? <a href="theremin.html">Play the theremin on this phone alone</a> (the phone makes the sound itself).</div>
+
+<script src="relay.js"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const q = new URLSearchParams(location.search);
+  let room = Relay.cleanRoom(q.get("r"));
+  const b = +q.get("b") || 0;
+  try { $("name").value = localStorage.getItem("pb.name") || ""; } catch {}
+  function showRoom() {
+    $("room").textContent = room || "–";
+    $("typeRoom").classList.toggle("hidden", !!q.get("r"));
+    $("roomHelp").textContent = q.get("r") ? "From the stage's QR code." : "Type the room code shown on the stage.";
+    $("goFlute").disabled = $("goTheremin").disabled = !room;
+  }
+  $("code").addEventListener("input", () => { room = Relay.cleanRoom($("code").value); showRoom(); });
+  showRoom();
+  const go = (page) => {
+    const name = $("name").value.trim().slice(0, 24);
+    try { localStorage.setItem("pb.name", name); } catch {}
+    const u = new URL(page, location.href);
+    u.searchParams.set("r", room); u.searchParams.set("b", b); if (name) u.searchParams.set("n", name);
+    location.href = u.href;
+  };
+  $("goFlute").onclick = () => go("flute.html");
+  $("goTheremin").onclick = () => go("theremin.html");
+})();
+</script>
+</body>
+</html>

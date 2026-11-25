@@ -2,6 +2,8 @@
 
 **Tilt the phone to pick a note, blow on it to play.**
 
+**Play it online, no install:** https://atharva-729.github.io/desk-band/play/ (pages in `docs/play/`; see the root README's "Play online").
+
 Hold the phone up in one hand.
 - **Tilt it forward or back** to choose the note. The tilt range is split into 8 steps, and each step is one note of the **full major scale** (C up to high C), so real tunes like Twinkle Twinkle work. A **pentatonic** mode, which is hard to sound bad in, is an option.
 - **Blow on the microphone** to sound the note. Blow harder for louder; stop blowing and the note stops.
