@@ -17,7 +17,7 @@
 
   function showJoin() {
     const u = new URL("phone.html", location.href);
-    u.hash = ""; u.search = `?r=${room}&b=${brokerIx}&v=6`;   // v: a new address each version, so phones don't use a cached old page
+    u.hash = ""; u.search = `?r=${room}&b=${brokerIx}&v=7`;   // v: a new address each version, so phones don't use a cached old page
     $("code").textContent = room; $("joinUrl").textContent = u.href; $("brokerName").textContent = R.BROKERS[brokerIx].name;
     try { const qr = qrcode(0, "M"); qr.addData(u.href); qr.make(); $("qr").innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true }); }
     catch { $("qr").textContent = "(QR code didn't load: open the address below on the phone)"; }

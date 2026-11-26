@@ -134,7 +134,7 @@
         if (p === 0 && v > 0.85) { V.crash(o, t, v * 0.8); return "kick + crash"; }
         return "kick";
       } },
-    { key: "strings", name: "Cello", color: "#c792ff", grid: 0.5, gain: 0.8,
+    { key: "strings", name: "Cello", color: "#c792ff", grid: 0.5, gain: 0.4,
       how: "Each knock bows the next cello note, low and warm, always in the tune. One note at a time.",
       play(b, t, v, S, V, o, M) {
         const m = step(S, inRange(PENTA, 52, 69), b, v, M);
