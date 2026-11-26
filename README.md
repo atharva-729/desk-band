@@ -94,12 +94,12 @@ the phone. Anyone who has the room code can play on that stage.
   flute and a theremin phone at once. Flute 28–32 messages a second reach the stage, theremin 23–26. All 29 checks pass.
   It proves the plumbing, not how it feels on a real phone.
 
-## Desk Band Together: one band, 2–9 phones (online)
+## Desk Band Together: one band, 2–8 phones (online)
 
 https://atharva-729.github.io/desk-band/band/ (pages in [`docs/band/`](docs/band/)). A group exercise for video calls: each person
 lays their phone on their own table and knocks next to it; the stage page plays the whole band and is shared into the call.
 
-- **Pick an instrument, first come, first served:** Drums, Cello, Synth lead, Bass, Piano chords, Marimba, Shakers &
+- **Pick an instrument, first come, first served:** Drums, Synth lead, Bass, Piano chords, Marimba, Shakers &
   claps, Dhol & tabla, Arpeggiator. A new phone starts on the first free one (so tapping works straight away) and can switch
   to any free one; taken ones are blacked out with the owner's name. When someone leaves, theirs is free again.
 - **Tap anywhere (this version):** no training. Any knock plays; the instrument decides *which* sound. Drums: kick on beats
@@ -114,7 +114,7 @@ lays their phone on their own table and knocks next to it; the stage page plays 
 - **Same stack as the flute and theremin:** GitHub Pages, QR join, the public MQTT relay ([`docs/play/relay.js`](docs/play/relay.js)),
   Desk Band's knock detector ([`docs/band/core.js`](docs/band/core.js), a copy of `static/core.js`), synthesised sounds.
 - **Tested** (`node tools/band-online/e2e.js`, headless Chrome through the real relay, fake knocks and jolts): 10 phones:
-  picking and refusing taken instruments, all 9 sounding, grid placement, heard-or-felt (counted once), tempo, leaving and rejoining. One-way lag
+  picking and refusing taken instruments, all 8 sounding (test written for the earlier 9-instrument version), grid placement, heard-or-felt (counted once), tempo, leaving and rejoining. One-way lag
   180–197 ms. Not tested yet: real phones, real people, a real call.
 - **Next:** Spots mode (each person trains 4 spots, 2 on the laptop, 2 on the table; room for 5 for pentatonic), and
   WebRTC for the drums if the lag turns out to matter.

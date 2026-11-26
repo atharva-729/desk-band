@@ -1,4 +1,4 @@
-// Desk Band Together: the music. Chord loops, the 9 instruments (in join order) and their synthesised sounds.
+// Desk Band Together: the music. Chord loops, the 8 instruments and their synthesised sounds.
 // Every sound takes an exact AudioContext time, so the stage can place each knock on the beat grid.
 // "Tap anywhere": a knock doesn't say WHICH sound; the instrument picks the right one for where on the beat the
 // knock lands and which chord is playing, so nobody can play a wrong note or fall out of the groove.
@@ -82,19 +82,6 @@
         g.gain.setValueAtTime(0.16 * v, t + dur * 0.8); g.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.12);
         x.connect(lp); y.connect(gy).connect(lp); lp.connect(g).connect(o); x.start(t); y.start(t); x.stop(t + dur + 0.2); y.stop(t + dur + 0.2);
       },
-      cello: (o, t, m, v, dur) => {   // a bowed note: two slightly detuned saws, soft bow attack, vibrato, body resonance
-        const f = mtof(m), lp = ctx.createBiquadFilter(), body = ctx.createBiquadFilter(), g = ctx.createGain();
-        const lfo = ctx.createOscillator(), lg = ctx.createGain(), peak = 0.09 + 0.07 * v, end = t + dur;
-        lp.type = "lowpass"; lp.frequency.setValueAtTime(900 + 900 * v, t); lp.Q.value = 0.7;
-        body.type = "peaking"; body.frequency.value = 450; body.Q.value = 1.2; body.gain.value = 5;
-        lfo.frequency.value = 5.3; lg.gain.setValueAtTime(0, t); lg.gain.linearRampToValueAtTime(9, t + 0.25);   // vibrato (cents) comes in after the bow starts
-        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + 0.07);
-        g.gain.setValueAtTime(peak * 0.85, end); g.gain.exponentialRampToValueAtTime(0.0001, end + 0.3);
-        lfo.connect(lg);
-        [-4, 4].forEach((c) => { const x = ctx.createOscillator(); x.type = "sawtooth"; x.frequency.value = f; x.detune.value = c; lg.connect(x.detune); x.connect(lp); x.start(t); x.stop(end + 0.35); });
-        lp.connect(body).connect(g).connect(o); lfo.start(t); lfo.stop(end + 0.35);
-        return g;
-      },
       pluck: (o, t, m, v) => {
         const f = mtof(m), x = ctx.createOscillator(), lp = ctx.createBiquadFilter(), g = ctx.createGain();
         x.type = "sawtooth"; x.frequency.value = f;
@@ -110,7 +97,7 @@
     return V;
   }
 
-  // ---------- the 9 instruments, in join order ----------
+  // ---------- the 8 instruments ----------
   // play(b, t, v, S, V, out, M) -> label. b: the beat the knock lands on (0 = first beat; 4 beats a bar), t: its time,
   // v: knock strength 0..1, S: this instrument's own memory, M: { chord(b), beatSec }.
   const step = (S, notes, b, v, M) => {   // a melody that wanders the pentatonic scale, landing on chord notes on the beat
@@ -133,14 +120,6 @@
         V.kick(o, t, v); V.hat(o, t, v * 0.5);
         if (p === 0 && v > 0.85) { V.crash(o, t, v * 0.8); return "kick + crash"; }
         return "kick";
-      } },
-    { key: "strings", name: "Cello", color: "#c792ff", grid: 0.5, gain: 0.4,
-      how: "Each knock bows the next cello note, low and warm, always in the tune. One note at a time.",
-      play(b, t, v, S, V, o, M) {
-        const m = step(S, inRange(PENTA, 52, 69), b, v, M);
-        if (S.g && S.end > t) { S.g.gain.cancelScheduledValues(t); S.g.gain.setTargetAtTime(0.0001, t, 0.04); }   // one note at a time: the new note ends the last
-        S.end = t + 0.95 * M.beatSec; S.g = V.cello(o, t, m, v, 0.95 * M.beatSec);
-        return noteName(m);
       } },
     { key: "synth", name: "Synth lead", color: "#5aa8ff", grid: 0.5, gain: 1,
       how: "Each knock plays the next note of a tune that always fits. Knock hard to jump higher.",
