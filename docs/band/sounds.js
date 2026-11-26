@@ -82,15 +82,18 @@
         g.gain.setValueAtTime(0.16 * v, t + dur * 0.8); g.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.12);
         x.connect(lp); y.connect(gy).connect(lp); lp.connect(g).connect(o); x.start(t); y.start(t); x.stop(t + dur + 0.2); y.stop(t + dur + 0.2);
       },
-      pad: (o, t, notes, v, dur) => {   // strings: two detuned saws per note, soft attack, long release
-        notes.forEach((m) => {
-          const f = mtof(m), lp = ctx.createBiquadFilter(), g = ctx.createGain();
-          lp.type = "lowpass"; lp.frequency.value = 1400 + 1200 * v;
-          g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.06 * v + 0.02, t + 0.35);
-          g.gain.setValueAtTime(0.06 * v + 0.02, t + dur); g.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.9);
-          [-7, 7].forEach((c) => { const x = ctx.createOscillator(); x.type = "sawtooth"; x.frequency.value = f; x.detune.value = c; x.connect(lp); x.start(t); x.stop(t + dur + 1); });
-          lp.connect(g).connect(o);
-        });
+      cello: (o, t, m, v, dur) => {   // a bowed note: two slightly detuned saws, soft bow attack, vibrato, body resonance
+        const f = mtof(m), lp = ctx.createBiquadFilter(), body = ctx.createBiquadFilter(), g = ctx.createGain();
+        const lfo = ctx.createOscillator(), lg = ctx.createGain(), peak = 0.09 + 0.07 * v, end = t + dur;
+        lp.type = "lowpass"; lp.frequency.setValueAtTime(900 + 900 * v, t); lp.Q.value = 0.7;
+        body.type = "peaking"; body.frequency.value = 450; body.Q.value = 1.2; body.gain.value = 5;
+        lfo.frequency.value = 5.3; lg.gain.setValueAtTime(0, t); lg.gain.linearRampToValueAtTime(9, t + 0.25);   // vibrato (cents) comes in after the bow starts
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + 0.07);
+        g.gain.setValueAtTime(peak * 0.85, end); g.gain.exponentialRampToValueAtTime(0.0001, end + 0.3);
+        lfo.connect(lg);
+        [-4, 4].forEach((c) => { const x = ctx.createOscillator(); x.type = "sawtooth"; x.frequency.value = f; x.detune.value = c; lg.connect(x.detune); x.connect(lp); x.start(t); x.stop(end + 0.35); });
+        lp.connect(body).connect(g).connect(o); lfo.start(t); lfo.stop(end + 0.35);
+        return g;
       },
       pluck: (o, t, m, v) => {
         const f = mtof(m), x = ctx.createOscillator(), lp = ctx.createBiquadFilter(), g = ctx.createGain();
@@ -131,12 +134,13 @@
         if (p === 0 && v > 0.85) { V.crash(o, t, v * 0.8); return "kick + crash"; }
         return "kick";
       } },
-    { key: "strings", name: "Strings", color: "#c792ff", grid: 1, gain: 1,
-      how: "A knock swells the strings on the chord that's playing, until the chord changes. Harder = louder.",
+    { key: "strings", name: "Cello", color: "#c792ff", grid: 0.5, gain: 0.8,
+      how: "Each knock bows the next cello note, low and warm, always in the tune. One note at a time.",
       play(b, t, v, S, V, o, M) {
-        const ch = M.chord(b), beats = Math.max(1, 4 - (b % 4));
-        V.pad(o, t, inRange(ch.pcs, 55, 67).slice(0, 4), v, beats * M.beatSec);
-        return ch.name;
+        const m = step(S, inRange(PENTA, 52, 69), b, v, M);
+        if (S.g && S.end > t) { S.g.gain.cancelScheduledValues(t); S.g.gain.setTargetAtTime(0.0001, t, 0.04); }   // one note at a time: the new note ends the last
+        S.end = t + 0.95 * M.beatSec; S.g = V.cello(o, t, m, v, 0.95 * M.beatSec);
+        return noteName(m);
       } },
     { key: "synth", name: "Synth lead", color: "#5aa8ff", grid: 0.5, gain: 1,
       how: "Each knock plays the next note of a tune that always fits. Knock hard to jump higher.",
@@ -162,7 +166,7 @@
     { key: "marimba", name: "Marimba", color: "#6be0ff", grid: 0.5, gain: 1,
       how: "Each knock plays the next marimba note, high and bright, always in the scale.",
       play(b, t, v, S, V, o, M) { const m = step(S, inRange(PENTA, 72, 88), b, v, M); V.mallet(o, t, m, v); return noteName(m); } },
-    { key: "shakers", name: "Shakers & claps", color: "#b8e05a", grid: 0.5, gain: 1,
+    { key: "shakers", name: "Shakers & claps", color: "#b8e05a", grid: 0.5, gain: 2.2,
       how: "Claps on beats 2 and 4, shakers everywhere else. Knock hard for a tambourine.",
       play(b, t, v, S, V, o) {
         const p = b % 4;

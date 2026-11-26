@@ -99,15 +99,15 @@ the phone. Anyone who has the room code can play on that stage.
 https://atharva-729.github.io/desk-band/band/ (pages in [`docs/band/`](docs/band/)). A group exercise for video calls: each person
 lays their phone on their own table and knocks next to it; the stage page plays the whole band and is shared into the call.
 
-- **Pick an instrument, first come, first served:** Drums, Strings, Synth lead, Bass, Piano chords, Marimba, Shakers &
+- **Pick an instrument, first come, first served:** Drums, Cello, Synth lead, Bass, Piano chords, Marimba, Shakers &
   claps, Dhol & tabla, Arpeggiator. A new phone starts on the first free one (so tapping works straight away) and can switch
   to any free one; taken ones are blacked out with the owner's name. When someone leaves, theirs is free again.
 - **Tap anywhere (this version):** no training. Any knock plays; the instrument decides *which* sound. Drums: kick on beats
-  1 and 3, snare on 2 and 4, hi-hat between. Bass, strings, piano and arpeggiator follow a 4-chord loop (C · G · Am · F by
+  1 and 3, snare on 2 and 4, hi-hat between. Bass, piano and arpeggiator follow a 4-chord loop (C · G · Am · F by
   default); synth lead and marimba walk the C pentatonic scale and land on chord notes on the beat. Hard knocks add a
   crash, a tambourine, a long chord or a jump up.
 - **On the beat despite the lag:** a knock reaches the stage about 0.2 s late, so the stage plays it on the next half-beat
-  (strings and arpeggiator: next beat) of a shared clock. A metronome starts slow (70 BPM, ±5 buttons, 50–140).
+  (arpeggiator: next beat) of a shared clock. A metronome starts slow (70 BPM, ±5 buttons, 50–140).
 - **Heard or felt:** a tap counts if the mic hears it (Desk Band's knock detector) **or** the motion sensor feels a jolt
   (over 0.05 m/s² and 4× the phone's resting shake). A tap that's both is counted once. Soft taps the mic misses still play.
   (A first version counted only taps the phone felt, to ignore laptop speakers; it missed too many real, light taps.)
