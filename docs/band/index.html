@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Desk Band Together</title>
+<style>
+  :root { --bg:#0b0c10; --panel:#15171e; --line:#262a35; --ink:#eef0f6; --dim:#8b90a3; --ok:#3dd6a3; --warn:#ffc23d; --accent:#5aa8ff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.45 -apple-system, system-ui, sans-serif; padding:20px; }
+  a { color:var(--accent); }
+  h1 { font-size:22px; margin:0; } h2 { font-size:15px; margin:0 0 8px; }
+  .sub { color:var(--dim); font-size:13px; }
+  header { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
+  .ctl { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px; }
+  button { font:inherit; color:#101218; background:var(--accent); border:0; border-radius:10px; padding:9px 16px; font-weight:700; cursor:pointer; }
+  button.ghost { color:var(--ink); background:var(--panel); border:1px solid var(--line); }
+  button.on { background:var(--ok); }
+  #go { font-size:18px; padding:14px 22px; }
+  select { font:inherit; color:var(--ink); background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:8px; }
+  .pill { font-size:12px; padding:4px 10px; border-radius:20px; border:1px solid var(--line); color:var(--dim); white-space:nowrap; }
+  .pill.on { color:var(--ok); border-color:var(--ok); } .pill.bad { color:var(--warn); border-color:var(--warn); }
+  .lbl { color:var(--dim); font-size:12px; text-transform:uppercase; letter-spacing:.5px; }
+  .top { display:grid; grid-template-columns:230px 300px minmax(0, 1fr); gap:16px; margin-bottom:16px; }
+  @media (max-width: 1100px) { .top { grid-template-columns:230px minmax(0, 1fr); } .top .help { grid-column:1 / -1; } }
+  @media (max-width: 640px) { .top { grid-template-columns:1fr; } }
+  #qr svg { width:100%; height:auto; background:#fff; border-radius:10px; display:block; }
+  .code { font-size:28px; font-weight:800; letter-spacing:4px; text-align:center; margin-top:6px; }
+  #joinUrl { font-size:11px; color:var(--dim); word-break:break-all; text-align:center; }
+  /* the beat */
+  .now { display:flex; flex-direction:column; gap:12px; }
+  .chordRow { display:flex; gap:6px; }
+  .chordRow div { flex:1; text-align:center; padding:10px 0; border-radius:10px; background:#101218; border:2px solid var(--line); font-weight:800; font-size:20px; color:var(--dim); }
+  .chordRow div.cur { border-color:var(--accent); color:var(--ink); }
+  .beats { display:flex; gap:8px; justify-content:center; }
+  .beats i { width:22px; height:22px; border-radius:50%; background:#20242f; display:block; transition:background .05s; }
+  .beats i.on { background:var(--ink); } .beats i.on.one { background:var(--warn); }
+  .tempo { display:flex; align-items:center; gap:8px; justify-content:center; }
+  .tempo b { font-size:26px; min-width:56px; text-align:center; font-variant-numeric:tabular-nums; }
+  .tempo button { padding:6px 12px; }
+  ol { margin:0; padding-left:20px; } li { margin:4px 0; }
+  b.hl { color:var(--accent); }
+  /* instruments */
+  #roles { display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:12px; }
+  .rc { background:var(--panel); border:1px solid var(--line); border-top:4px solid var(--c); border-radius:14px; padding:12px; position:relative; transition:opacity .3s; }
+  .rc.free { opacity:.5; }
+  .rc .h { display:flex; align-items:center; gap:8px; }
+  .rc .num { color:var(--dim); font-size:12px; } .rc .nm { font-weight:800; font-size:16px; }
+  .rc .mute { margin-left:auto; padding:3px 9px; font-size:12px; }
+  .rc .mute.muted { background:var(--warn); color:#101218; border-color:var(--warn); }
+  .rc .who { font-size:14px; margin:6px 0 2px; min-height:20px; }
+  .rc .last { font-size:26px; font-weight:800; color:var(--dim); min-height:34px; transition:color .08s; }
+  .rc.hit .last { color:var(--c); }
+  .rc .how { color:var(--dim); font-size:12px; margin-top:4px; }
+  .rc .st { color:var(--dim); font-size:11px; margin-top:6px; font-variant-numeric:tabular-nums; min-height:15px; }
+  .rc .flash { position:absolute; inset:0; border-radius:14px; box-shadow:inset 0 0 0 3px var(--c); opacity:0; transition:opacity .25s; pointer-events:none; }
+  .rc.hit .flash { opacity:1; transition:none; }
+  footer { color:var(--dim); font-size:12px; margin-top:24px; line-height:1.6; }
+</style>
+</head>
+<body>
+  <header>
+    <div><h1>Desk Band Together</h1><div class="sub">Up to 9 people, one band. Everyone knocks on their own table; the phone listens; the band plays here.</div></div>
+    <div class="ctl">
+      <button id="go">Start the band</button>
+      <button id="metro" class="ghost">Metronome: on</button>
+      <select id="prog"></select>
+      <label class="sub" style="display:flex;align-items:center;gap:6px">Volume <input type="range" id="vol" min="0" max="100" value="80"></label>
+      <span class="pill" id="relayPill">connecting…</span>
+    </div>
+  </header>
+
+  <div class="top">
+    <div class="card">
+      <div id="qr"></div>
+      <div class="code" id="code">–</div>
+      <div id="joinUrl"></div>
+    </div>
+    <div class="card now">
+      <div class="lbl">Now playing</div>
+      <div class="chordRow" id="chords"></div>
+      <div class="beats" id="beats"><i class="one"></i><i></i><i></i><i></i></div>
+      <div class="tempo"><button class="ghost" id="slower">− 5</button><b id="bpm">70</b><span class="sub">BPM</span><button class="ghost" id="faster">+ 5</button></div>
+    </div>
+    <div class="card help">
+      <h2>How to play</h2>
+      <ol>
+        <li>Click <b class="hl">Start the band</b>. Share this tab <b class="hl">with its sound</b> in the call (Meet: Present → A tab → "Also share tab audio").</li>
+        <li>Everyone scans the code with their phone (or opens the link and types the room code), types a name and taps Start. The 1st person gets Drums, the 2nd Strings, and so on.</li>
+        <li><b>Phone flat on the table, knock the table right next to it.</b> Any knock plays; the band places it on the beat and picks notes that fit, so nothing sounds wrong.</li>
+        <li>Wear <b>headphones</b> on your laptop, and don't join the call on the phone that's playing. Start slow, then speed up together.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div id="roles"></div>
+
+  <footer>
+    Phones and this page talk through a free public relay (MQTT, <span id="brokerName">–</span>) using the room code. Phones send only
+    "a knock, this strong", plus the name a player types: no audio leaves a phone and nothing is recorded. Each knock reaches
+    this page about 0.2 s after it happens, so the band plays it on the next half-beat (strings and arpeggiator: next beat).
+    · <a href="https://github.com/atharva-729/desk-band">How Desk Band works</a>
+  </footer>
+
+<script src="../play/vendor/qrcode.js"></script>
+<script src="../play/relay.js"></script>
+<script src="sounds.js"></script>
+<script src="stage.js"></script>
+</body>
+</html>

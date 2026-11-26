@@ -94,6 +94,30 @@ the phone. Anyone who has the room code can play on that stage.
   flute and a theremin phone at once. Flute 28–32 messages a second reach the stage, theremin 23–26. All 29 checks pass.
   It proves the plumbing, not how it feels on a real phone.
 
+## Desk Band Together: one band, 2–9 phones (online)
+
+https://atharva-729.github.io/desk-band/band/ (pages in [`docs/band/`](docs/band/)). A group exercise for video calls: each person
+lays their phone on their own table and knocks next to it; the stage page plays the whole band and is shared into the call.
+
+- **Join order = instrument:** 1 Drums, 2 Strings, 3 Synth lead, 4 Bass, 5 Piano chords, 6 Marimba, 7 Shakers & claps,
+  8 Dhol & tabla, 9 Arpeggiator. Someone leaves: the next person to join gets their instrument. A 10th phone is told the band is full.
+- **Tap anywhere (this version):** no training. Any knock plays; the instrument decides *which* sound. Drums: kick on beats
+  1 and 3, snare on 2 and 4, hi-hat between. Bass, strings, piano and arpeggiator follow a 4-chord loop (C · G · Am · F by
+  default); synth lead and marimba walk the C pentatonic scale and land on chord notes on the beat. Hard knocks add a
+  crash, a tambourine, a long chord or a jump up.
+- **On the beat despite the lag:** a knock reaches the stage about 0.2 s late, so the stage plays it on the next half-beat
+  (strings and arpeggiator: next beat) of a shared clock. A metronome starts slow (70 BPM, ±5 buttons, 50–140).
+- **Only knocks the phone feels:** in a call, each person's laptop plays the band, and the phone could hear those drums.
+  A sound counts only if the phone's motion sensor also jolts: at least 0.03 m/s² and twice the jolt of the 0.3 s before.
+  In 1,119 recorded Desk Band knocks, 95% jolted the phone by 0.055 m/s² or more (median 0.13). Players can untick it.
+- **Same stack as the flute and theremin:** GitHub Pages, QR join, the public MQTT relay ([`docs/play/relay.js`](docs/play/relay.js)),
+  Desk Band's knock detector ([`docs/band/core.js`](docs/band/core.js), a copy of `static/core.js`), synthesised sounds.
+- **Tested** (`node tools/band-online/e2e.js`, headless Chrome through the real relay, fake knocks and jolts): 10 phones,
+  join order, all 9 instruments sounding, grid placement, the felt-gate, tempo changes, leaving and rejoining. One-way lag
+  180–197 ms. Not tested yet: real phones, real people, a real call.
+- **Next:** Spots mode (each person trains 4 spots, 2 on the laptop, 2 on the table; room for 5 for pentatonic), and
+  WebRTC for the drums if the lag turns out to matter.
+
 ## Run it (v0)
 
 Needs Python 3.9+ on the laptop. The certificate is made automatically. If that fails: `pip install cryptography`.

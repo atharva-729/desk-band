@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Desk Band Together · Phone</title>
+<link rel="stylesheet" href="../play/phone.css">
+<style>
+  .role { border-radius:16px; padding:18px; text-align:center; background:var(--panel); border:2px solid var(--c, var(--line)); margin:10px 0; }
+  .role .you { color:var(--dim); font-size:13px; }
+  .role .nm { font-size:34px; font-weight:800; color:var(--c, var(--ink)); line-height:1.15; }
+  .role .how { color:var(--dim); font-size:13px; margin-top:6px; }
+  .knock { height:120px; border-radius:16px; background:#101218; border:2px solid var(--line); display:flex; align-items:center; justify-content:center;
+           font-size:22px; font-weight:800; color:var(--dim); transition:background .3s, color .3s; text-align:center; padding:8px; }
+  .knock.sent { background:var(--c, var(--ok)); color:#101218; transition:none; }
+  .knock.ign { background:#2a2d38; color:var(--warn); transition:none; }
+  .room { font-size:26px; font-weight:800; letter-spacing:3px; }
+</style>
+</head>
+<body>
+  <div class="link" id="link"><i></i><span id="linkTxt">Not started</span></div>
+  <h1>Desk Band Together</h1>
+  <div class="sub">Knock the table next to your phone. The band on the shared screen plays it, on the beat.</div>
+
+  <div id="intro">
+    <div class="card">
+      <div class="lbl">Room</div>
+      <div class="room" id="roomTxt">–</div>
+      <div id="typeRoom" class="hidden"><div class="row"><input type="text" id="code" placeholder="Room code from the shared screen" autocapitalize="characters" autocomplete="off" maxlength="8"></div></div>
+      <div class="lbl" style="margin-top:12px">Your name on the stage</div>
+      <div class="row" style="margin-bottom:0"><input type="text" id="name" placeholder="e.g. Sam" maxlength="24" autocomplete="off"></div>
+    </div>
+    <div class="card small">
+      <ul style="margin:0;padding-left:18px">
+        <li>Lay the phone <b>flat on your table</b>, screen up.</li>
+        <li>Knock the table <b>right next to the phone</b> with a knuckle or fingertip. Any knock plays.</li>
+        <li><b>Don't join the call on this phone</b> (the call takes over its microphone). Wear <b>headphones</b> on your laptop so the phone doesn't hear the band.</li>
+      </ul>
+    </div>
+    <button id="start" class="primary">Start</button>
+  </div>
+
+  <div id="main" class="hidden">
+    <button id="micWarn" class="warn hidden">Mic stopped: tap to turn it back on</button>
+    <div class="role" id="role"><div class="you">You are playing</div><div class="nm" id="roleName">…</div><div class="how" id="roleHow">Waiting for the stage to give you an instrument</div></div>
+    <div class="knock" id="knock">Knock the table</div>
+    <div class="small" style="text-align:center;margin-top:6px" id="counts">0 knocks sent</div>
+    <div class="card">
+      <label class="small" style="display:flex;gap:8px;align-items:center">
+        <input type="checkbox" id="gate" checked> Only count knocks the phone can feel (ignores speakers and voices)</label>
+      <div class="small" id="gateTxt" style="margin-top:4px"></div>
+      <div class="lbl" style="margin-top:12px">Sensitivity <span id="sensTxt"></span></div>
+      <input type="range" id="sens" min="3" max="12" step="0.5" value="5">
+      <div class="small">Left = hears softer knocks. Move right if it plays when you haven't knocked.</div>
+      <div class="small" id="info" style="margin-top:8px"></div>
+    </div>
+  </div>
+
+<script src="../play/relay.js"></script>
+<script src="link.js"></script>
+<script src="core.js"></script>
+<script src="sounds.js"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const q = new URLSearchParams(location.search);
+  const JOLT_MIN = 0.03;   // m/s²: 95% of 1,119 recorded Desk Band knocks jolted the phone by 0.055 or more (median 0.13)
+  let room = Relay.cleanRoom(q.get("r")), link = null, det = null, ctx = null, mic = null;
+  const st = window.__band = { sent: 0, ignored: 0, felt: [], lastJolt: null };
+  try { $("name").value = q.get("n") || localStorage.getItem("pb.name") || ""; } catch {}
+  $("roomTxt").textContent = room || "–";
+  $("typeRoom").classList.toggle("hidden", !!room);
+  $("code").oninput = () => { room = Relay.cleanRoom($("code").value); $("roomTxt").textContent = room || "–"; };
+  $("sens").oninput = () => { $("sensTxt").textContent = "· " + $("sens").value; if (det) det.thrMult = +$("sens").value; try { localStorage.setItem("band.sens", $("sens").value); } catch {} };
+  try { const s = localStorage.getItem("band.sens"); if (s) $("sens").value = s; } catch {}
+  $("sens").oninput();
+  try { const g = localStorage.getItem("band.gate"); if (g != null) $("gate").checked = g === "1"; } catch {}
+  $("gate").onchange = () => { try { localStorage.setItem("band.gate", $("gate").checked ? "1" : "0"); } catch {} };
+
+  // ---- motion: did the phone feel the knock? ----
+  const motion = [];   // { t, m }: size of the jolt (m/s², gravity removed)
+  let grav = null;
+  function onMotion(e) {
+    const now = performance.now();
+    let x, y, z;
+    if (e.acceleration && e.acceleration.x != null) ({ x, y, z } = e.acceleration);
+    else if (e.accelerationIncludingGravity && e.accelerationIncludingGravity.x != null) {   // some phones: take gravity out ourselves
+      const g = e.accelerationIncludingGravity;
+      grav = grav ? grav.map((v, i) => v + 0.1 * ([g.x, g.y, g.z][i] - v)) : [g.x, g.y, g.z];
+      x = g.x - grav[0]; y = g.y - grav[1]; z = g.z - grav[2];
+    } else return;
+    motion.push({ t: now, m: Math.hypot(x, y, z) });
+    while (motion.length && motion[0].t < now - 3000) motion.shift();
+  }
+  const rms = (a) => (a.length ? Math.sqrt(a.reduce((s, p) => s + p.m * p.m, 0) / a.length) : 0);
+  // Felt = the phone shook around the knock (40 ms before it to now), clearly more than in the 0.3 s before.
+  function felt(h) {
+    const now = performance.now();
+    if (!motion.length || motion[motion.length - 1].t < now - 1000) return { ok: true, why: "no motion readings" };
+    const win = motion.filter((p) => p.t >= h.wallMs - 40), before = motion.filter((p) => p.t >= h.wallMs - 340 && p.t < h.wallMs - 60);
+    const j = rms(win), b = rms(before), need = Math.max(JOLT_MIN, 2 * b);
+    st.lastJolt = { j, b, need };
+    return { ok: j >= need, j, need };
+  }
+
+  $("start").onclick = async () => {
+    if (!room) { alert("Type the room code from the shared screen first."); return; }
+    const name = $("name").value.trim().slice(0, 24);
+    try { localStorage.setItem("pb.name", name); } catch {}
+    try {
+      if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") await DeviceMotionEvent.requestPermission();
+    } catch {}
+    window.addEventListener("devicemotion", onMotion);
+    try { await startMic(); } catch (err) { alert("Could not start the microphone: " + err.message + "\n\nAllow the microphone for this page and try again."); return; }
+    try { if ("wakeLock" in navigator) await navigator.wakeLock.request("screen"); } catch {}
+    link = new BandLink(room, q.get("b"), name);
+    st.link = link;
+    link.onrole = showRole;
+    $("intro").classList.add("hidden"); $("main").classList.remove("hidden");
+    $("info").textContent = `${mic.label} · ${(ctx.sampleRate / 1000).toFixed(1)} kHz`;
+    setInterval(draw, 250);
+    setInterval(() => link.send({ t: "stat", ign: st.ignored }), 3000);
+  };
+
+  async function startMic() {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 } });
+    ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: "interactive" });
+    await ctx.resume();
+    const src = ctx.createMediaStreamSource(stream), proc = ctx.createScriptProcessor(256, 1, 1);
+    det = new DeskCore.Detector(ctx.sampleRate, { thrMult: +$("sens").value, postMs: 30 });   // short window: only "how loud", not "where"
+    proc.onaudioprocess = (e) => { lastAudio = performance.now(); det.process(e.inputBuffer.getChannelData(0), performance.now(), onKnock); };
+    src.connect(proc); proc.connect(ctx.destination);
+    mic = { stream, src, proc, label: stream.getAudioTracks()[0].label || "mic" };
+    lastAudio = performance.now();
+  }
+  let lastAudio = 0;
+  const micOK = () => ctx && ctx.state === "running" && performance.now() - lastAudio < 700;
+  $("micWarn").onclick = async () => { try { await ctx.resume(); } catch {} };
+  document.addEventListener("click", () => { if (ctx && !micOK()) ctx.resume().catch(() => {}); }, true);
+
+  function onKnock(h) {
+    const f = $("gate").checked ? felt(h) : { ok: true };
+    const k = $("knock");
+    k.classList.remove("sent", "ign"); void k.offsetWidth;
+    if (!f.ok) { st.ignored++; k.classList.add("ign"); k.textContent = "Heard, not felt: ignored"; return; }
+    const v = Math.max(0.15, Math.min(1, Math.log10(h.peakAmp / h.thr + 1) / 1.3));   // knock strength, as in Desk Band
+    if (link) link.send({ t: "hit", v: Math.round(v * 100) / 100, dl: Math.round(h.delayMs) });
+    st.sent++; k.classList.add("sent"); k.textContent = v > 0.85 ? "KNOCK!" : "knock";
+  }
+
+  function showRole(key) {
+    const r = key && BandMusic.ROLES.find((x) => x.key === key);
+    $("role").style.setProperty("--c", r ? r.color : "");
+    $("knock").style.setProperty("--c", r ? r.color : "");
+    $("roleName").textContent = r ? r.name : key === null ? "The band is full" : "…";
+    $("roleHow").textContent = r ? r.how : key === null ? "All 9 instruments are taken. You'll get one as soon as someone leaves." : "Waiting for the stage to give you an instrument";
+  }
+  function draw() {
+    const s = link.status();
+    $("link").className = "link " + s.state; $("linkTxt").textContent = s.text;
+    $("micWarn").classList.toggle("hidden", micOK());
+    $("counts").textContent = `${st.sent} knocks sent` + (st.ignored ? ` · ${st.ignored} ignored (heard but not felt)` : "");
+    const lastM = motion.length ? motion[motion.length - 1].t : 0;
+    $("gateTxt").textContent = !$("gate").checked ? "Off: every sharp sound counts as a knock."
+      : performance.now() - lastM > 1000 ? "No motion readings on this phone, so every sharp sound counts."
+      : st.lastJolt ? `Last knock: jolt ${st.lastJolt.j.toFixed(3)}, needed ${st.lastJolt.need.toFixed(3)} m/s². If real knocks get ignored, untick this.` : "Knock once to see how hard the phone feels it.";
+  }
+})();
+</script>
+</body>
+</html>
