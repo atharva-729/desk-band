@@ -6,25 +6,27 @@
 <title>Desk Band Together · Phone</title>
 <link rel="stylesheet" href="../play/phone.css">
 <style>
-  .role { border-radius:16px; padding:18px; text-align:center; background:var(--panel); border:2px solid var(--c, var(--line)); margin:10px 0; }
+  .role { border-radius:16px; padding:14px; text-align:center; background:var(--panel); border:2px solid var(--c, var(--line)); margin:10px 0; }
   .role .you { color:var(--dim); font-size:13px; }
-  .role .nm { font-size:34px; font-weight:800; color:var(--c, var(--ink)); line-height:1.15; }
+  .role .nm { font-size:32px; font-weight:800; color:var(--c, var(--ink)); line-height:1.15; }
   .role .how { color:var(--dim); font-size:13px; margin-top:6px; }
-  .knock { height:120px; border-radius:16px; background:#101218; border:2px solid var(--line); display:flex; align-items:center; justify-content:center;
+  .knock { height:110px; border-radius:16px; background:#101218; border:2px solid var(--line); display:flex; align-items:center; justify-content:center;
            font-size:22px; font-weight:800; color:var(--dim); transition:background .3s, color .3s; text-align:center; padding:8px; }
   .knock.sent { background:var(--c, var(--ok)); color:#101218; transition:none; }
-  .knock.ign { background:#2a2d38; color:var(--warn); transition:none; }
   .room { font-size:26px; font-weight:800; letter-spacing:3px; }
-  .picker { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin:10px 0; }
-  .picker button { padding:10px 4px; font-size:13px; border-color:var(--line); }
-  .picker button.on { background:var(--c); border-color:var(--c); color:#101218; }
-  .devtag { display:inline-block; font-size:11px; font-weight:800; letter-spacing:.5px; color:#101218; background:var(--warn); border-radius:6px; padding:2px 7px; margin-left:6px; vertical-align:middle; }
+  .picker { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin:8px 0 4px; }
+  .picker button { padding:9px 4px; font-size:13px; line-height:1.25; border-color:var(--line); }
+  .picker button small { display:block; font-weight:400; font-size:11px; color:var(--dim); }
+  .picker button.mine { background:var(--c); border-color:var(--c); color:#101218; }
+  .picker button.mine small { color:#101218; }
+  .picker button:disabled { opacity:1; background:#050608; color:#3a3e4a; border-color:#15171e; text-decoration:line-through; }
+  .picker button:disabled small { text-decoration:none; color:#4a4f5c; }
 </style>
 </head>
 <body>
   <div class="link" id="link"><i></i><span id="linkTxt">Not started</span></div>
-  <h1>Desk Band Together<span class="devtag hidden" id="devTag">DEVELOPER</span></h1>
-  <div class="sub">Knock the table next to your phone. The band on the shared screen plays it, on the beat.</div>
+  <h1>Desk Band Together</h1>
+  <div class="sub">Tap the table next to your phone. The band on the shared screen plays it, on the beat.</div>
 
   <div id="intro">
     <div class="card">
@@ -37,7 +39,7 @@
     <div class="card small">
       <ul style="margin:0;padding-left:18px">
         <li>Lay the phone <b>flat on your table</b>, screen up.</li>
-        <li>Knock the table <b>right next to the phone</b> with a knuckle or fingertip. Any knock plays.</li>
+        <li>Tap the table <b>right next to the phone</b>. A tap counts if the phone hears it <b>or</b> feels it.</li>
         <li><b>Don't join the call on this phone</b> (the call takes over its microphone). Wear <b>headphones</b> on your laptop so the phone doesn't hear the band.</li>
       </ul>
     </div>
@@ -46,20 +48,18 @@
 
   <div id="main" class="hidden">
     <button id="micWarn" class="warn hidden">Mic stopped: tap to turn it back on</button>
-    <div class="role" id="role"><div class="you">You are playing</div><div class="nm" id="roleName">…</div><div class="how" id="roleHow">Waiting for the stage to give you an instrument</div></div>
-    <div class="hidden" id="devBox">
-      <div class="small">Developer: pick any instrument and switch whenever you like. You don't take anyone's place in the band.</div>
+    <div class="role" id="role"><div class="you">You are playing</div><div class="nm" id="roleName">…</div><div class="how" id="roleHow">Waiting for the stage</div></div>
+    <div class="knock" id="knock">Tap the table</div>
+    <div class="small" style="text-align:center;margin-top:6px" id="counts">0 taps sent</div>
+    <div class="card">
+      <div class="lbl">Pick your instrument</div>
+      <div class="small">First come, first served: taken ones are blacked out.</div>
       <div class="picker" id="picker"></div>
     </div>
-    <div class="knock" id="knock">Knock the table</div>
-    <div class="small" style="text-align:center;margin-top:6px" id="counts">0 knocks sent</div>
     <div class="card">
-      <label class="small" style="display:flex;gap:8px;align-items:center">
-        <input type="checkbox" id="gate" checked> Only count knocks the phone can feel (ignores speakers and voices)</label>
-      <div class="small" id="gateTxt" style="margin-top:4px"></div>
-      <div class="lbl" style="margin-top:12px">Sensitivity <span id="sensTxt"></span></div>
-      <input type="range" id="sens" min="3" max="12" step="0.5" value="5">
-      <div class="small">Left = hears softer knocks. Move right if it plays when you haven't knocked.</div>
+      <div class="lbl">Sensitivity <span id="sensTxt"></span></div>
+      <input type="range" id="sens" min="2" max="12" step="0.5" value="4">
+      <div class="small">Left = hears softer taps. Move right if it plays when you haven't tapped.</div>
       <div class="small" id="info" style="margin-top:8px"></div>
     </div>
   </div>
@@ -72,68 +72,74 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const q = new URLSearchParams(location.search);
-  const JOLT_MIN = 0.03;   // m/s²: 95% of 1,119 recorded Desk Band knocks jolted the phone by 0.055 or more (median 0.13)
+  const ROLES = BandMusic.ROLES;
   let room = Relay.cleanRoom(q.get("r")), link = null, det = null, ctx = null, mic = null;
-  const DEV = q.get("dev") === "1";
-  let pick = "drums";
-  try { pick = localStorage.getItem("band.devPick") || pick; } catch {}
-  if (!BandMusic.ROLES.some((r) => r.key === pick)) pick = "drums";
-  $("devTag").classList.toggle("hidden", !DEV);
-  const st = window.__band = { sent: 0, ignored: 0, felt: [], lastJolt: null };
+  const st = window.__band = { sent: 0, heard: 0, felt: 0 };
   try { $("name").value = q.get("n") || localStorage.getItem("pb.name") || ""; } catch {}
   $("roomTxt").textContent = room || "–";
   $("typeRoom").classList.toggle("hidden", !!room);
   $("code").oninput = () => { room = Relay.cleanRoom($("code").value); $("roomTxt").textContent = room || "–"; };
-  $("sens").oninput = () => { $("sensTxt").textContent = "· " + $("sens").value; if (det) det.thrMult = +$("sens").value; try { localStorage.setItem("band.sens", $("sens").value); } catch {} };
-  try { const s = localStorage.getItem("band.sens"); if (s) $("sens").value = s; } catch {}
+  try { const s = localStorage.getItem("band.sens2"); if (s) $("sens").value = s; } catch {}
+  $("sens").oninput = () => { $("sensTxt").textContent = "· " + $("sens").value; if (det) det.thrMult = +$("sens").value; try { localStorage.setItem("band.sens2", $("sens").value); } catch {} };
   $("sens").oninput();
-  try { const g = localStorage.getItem("band.gate"); if (g != null) $("gate").checked = g === "1"; } catch {}
-  $("gate").onchange = () => { try { localStorage.setItem("band.gate", $("gate").checked ? "1" : "0"); } catch {} };
 
-  // ---- motion: did the phone feel the knock? ----
-  const motion = [];   // { t, m }: size of the jolt (m/s², gravity removed)
-  let grav = null;
+  // ---- one tap = heard by the mic OR felt by the motion sensor, counted once ----
+  let last = { t: -1e9, src: null };     // the last tap sent: when it happened and how we noticed it
+  function send(src, t, v) {
+    last = { t, src };
+    if (link) link.send({ t: "hit", v: Math.round(v * 100) / 100, f: src === "felt" ? 1 : 0 });
+    st.sent++; st[src]++;
+    const k = $("knock"); k.classList.remove("sent"); void k.offsetWidth; k.classList.add("sent");
+    k.textContent = v > 0.85 ? "TAP!" : "tap";
+  }
+  // heard: Desk Band's knock detector on the mic
+  function onHeard(h) {
+    if (last.src === "felt" && Math.abs(h.wallMs - last.t) < 150) return;   // the motion sensor already sent this tap
+    send("heard", h.wallMs, Math.max(0.15, Math.min(1, Math.log10(h.peakAmp / h.thr + 1) / 1.3)));
+  }
+  // felt: a sudden jolt, well above the phone's resting shake. Wait 90 ms for the mic: if it heard the same tap, the
+  // mic's version is sent instead (it's the better measure of how hard).
+  const JOLT_MIN = 0.05;   // m/s²; in 1,119 recorded Desk Band knocks the phone shook by 0.055 or more 95% of the time
+  let base = 0.01, prev = 0, pending = null, grav = null;
   function onMotion(e) {
     const now = performance.now();
     let x, y, z;
     if (e.acceleration && e.acceleration.x != null) ({ x, y, z } = e.acceleration);
-    else if (e.accelerationIncludingGravity && e.accelerationIncludingGravity.x != null) {   // some phones: take gravity out ourselves
+    else if (e.accelerationIncludingGravity && e.accelerationIncludingGravity.x != null) {   // some phones: remove gravity ourselves
       const g = e.accelerationIncludingGravity;
       grav = grav ? grav.map((v, i) => v + 0.1 * ([g.x, g.y, g.z][i] - v)) : [g.x, g.y, g.z];
       x = g.x - grav[0]; y = g.y - grav[1]; z = g.z - grav[2];
     } else return;
-    motion.push({ t: now, m: Math.hypot(x, y, z) });
-    while (motion.length && motion[0].t < now - 3000) motion.shift();
-  }
-  const rms = (a) => (a.length ? Math.sqrt(a.reduce((s, p) => s + p.m * p.m, 0) / a.length) : 0);
-  // Felt = the phone shook around the knock (40 ms before it to now), clearly more than in the 0.3 s before.
-  function felt(h) {
-    const now = performance.now();
-    if (!motion.length || motion[motion.length - 1].t < now - 1000) return { ok: true, why: "no motion readings" };
-    const win = motion.filter((p) => p.t >= h.wallMs - 40), before = motion.filter((p) => p.t >= h.wallMs - 340 && p.t < h.wallMs - 60);
-    const j = rms(win), b = rms(before), need = Math.max(JOLT_MIN, 2 * b);
-    st.lastJolt = { j, b, need };
-    return { ok: j >= need, j, need };
+    const m = Math.hypot(x, y, z), thr = Math.max(JOLT_MIN, 4 * base);
+    if (pending) pending.m = Math.max(pending.m, m);
+    else if (m > thr && m > 2 * prev && now - last.t > 150) {
+      pending = { t: now, m };
+      setTimeout(() => {
+        const p = pending; pending = null;
+        if (last.src === "heard" && Math.abs(last.t - p.t) < 150) return;   // the mic got it
+        send("felt", p.t, Math.max(0.2, Math.min(1, p.m / 0.5)));
+      }, 90);
+    }
+    if (m < thr) base = base * 0.98 + m * 0.02;   // the phone's resting shake
+    prev = m;
   }
 
   $("start").onclick = async () => {
     if (!room) { alert("Type the room code from the shared screen first."); return; }
     const name = $("name").value.trim().slice(0, 24);
     try { localStorage.setItem("pb.name", name); } catch {}
-    try {
-      if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") await DeviceMotionEvent.requestPermission();
-    } catch {}
+    try { if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") await DeviceMotionEvent.requestPermission(); } catch {}
     window.addEventListener("devicemotion", onMotion);
     try { await startMic(); } catch (err) { alert("Could not start the microphone: " + err.message + "\n\nAllow the microphone for this page and try again."); return; }
     try { if ("wakeLock" in navigator) await navigator.wakeLock.request("screen"); } catch {}
-    link = new BandLink(room, q.get("b"), name, DEV, DEV ? pick : null);
-    st.link = link;
-    link.onrole = DEV ? () => {} : showRole;   // a developer's instrument is whatever they picked here
-    if (DEV) { $("devBox").classList.remove("hidden"); buildPicker(); showRole(pick); }
+    link = new BandLink(room, q.get("b"), name);
+    st.link = link; st.det = det;
+    link.onrole = () => { showRole(); drawPicker(); };
+    link.onhello = drawPicker;
     $("intro").classList.add("hidden"); $("main").classList.remove("hidden");
     $("info").textContent = `${mic.label} · ${(ctx.sampleRate / 1000).toFixed(1)} kHz`;
+    buildPicker();
     setInterval(draw, 250);
-    setInterval(() => link.send({ t: "stat", ign: st.ignored }), 3000);
   };
 
   async function startMic() {
@@ -142,7 +148,7 @@
     await ctx.resume();
     const src = ctx.createMediaStreamSource(stream), proc = ctx.createScriptProcessor(256, 1, 1);
     det = new DeskCore.Detector(ctx.sampleRate, { thrMult: +$("sens").value, postMs: 30 });   // short window: only "how loud", not "where"
-    proc.onaudioprocess = (e) => { lastAudio = performance.now(); det.process(e.inputBuffer.getChannelData(0), performance.now(), onKnock); };
+    proc.onaudioprocess = (e) => { lastAudio = performance.now(); det.process(e.inputBuffer.getChannelData(0), performance.now(), onHeard); };
     src.connect(proc); proc.connect(ctx.destination);
     mic = { stream, src, proc, label: stream.getAudioTracks()[0].label || "mic" };
     lastAudio = performance.now();
@@ -152,46 +158,37 @@
   $("micWarn").onclick = async () => { try { await ctx.resume(); } catch {} };
   document.addEventListener("click", () => { if (ctx && !micOK()) ctx.resume().catch(() => {}); }, true);
 
-  function onKnock(h) {
-    const f = $("gate").checked ? felt(h) : { ok: true };
-    const k = $("knock");
-    k.classList.remove("sent", "ign"); void k.offsetWidth;
-    if (!f.ok) { st.ignored++; k.classList.add("ign"); k.textContent = "Heard, not felt: ignored"; return; }
-    const v = Math.max(0.15, Math.min(1, Math.log10(h.peakAmp / h.thr + 1) / 1.3));   // knock strength, as in Desk Band
-    if (link) link.send({ t: "hit", v: Math.round(v * 100) / 100, dl: Math.round(h.delayMs) });
-    st.sent++; k.classList.add("sent"); k.textContent = v > 0.85 ? "KNOCK!" : "knock";
-  }
-
+  // ---- instruments ----
   function buildPicker() {
     $("picker").innerHTML = "";
-    for (const r of BandMusic.ROLES) {
+    for (const r of ROLES) {
       const b = document.createElement("button");
-      b.textContent = r.name; b.style.setProperty("--c", r.color); b.dataset.k = r.key;
-      b.classList.toggle("on", r.key === pick);
-      b.onclick = () => {
-        pick = r.key; try { localStorage.setItem("band.devPick", pick); } catch {}
-        [...$("picker").children].forEach((x) => x.classList.toggle("on", x.dataset.k === pick));
-        link.setPick(pick); showRole(pick);
-      };
+      b.dataset.k = r.key; b.style.setProperty("--c", r.color);
+      b.innerHTML = `${r.name}<small></small>`;
+      b.onclick = () => { if (link.role !== r.key) link.pick(r.key); };
       $("picker").appendChild(b);
     }
+    drawPicker();
   }
-  function showRole(key) {
-    const r = key && BandMusic.ROLES.find((x) => x.key === key);
-    $("role").style.setProperty("--c", r ? r.color : "");
-    $("knock").style.setProperty("--c", r ? r.color : "");
-    $("roleName").textContent = r ? r.name : key === null ? "The band is full" : "…";
-    $("roleHow").textContent = r ? r.how : key === null ? "All 9 instruments are taken. You'll get one as soon as someone leaves." : "Waiting for the stage to give you an instrument";
+  function drawPicker() {
+    for (const b of $("picker").children) {
+      const k = b.dataset.k, mine = link.role === k, owner = link.who[k];
+      b.classList.toggle("mine", mine);
+      b.disabled = !mine && !!owner;
+      b.querySelector("small").textContent = mine ? "you" : owner ? owner : "free";
+    }
+  }
+  function showRole() {
+    const key = link.role, r = key && ROLES.find((x) => x.key === key);
+    $("role").style.setProperty("--c", r ? r.color : ""); $("knock").style.setProperty("--c", r ? r.color : "");
+    $("roleName").textContent = r ? r.name : key === null ? "No instrument free" : "…";
+    $("roleHow").textContent = r ? r.how : key === null ? "All 9 are taken. You'll be able to pick one as soon as someone leaves." : "Waiting for the stage";
   }
   function draw() {
     const s = link.status();
     $("link").className = "link " + s.state; $("linkTxt").textContent = s.text;
     $("micWarn").classList.toggle("hidden", micOK());
-    $("counts").textContent = `${st.sent} knocks sent` + (st.ignored ? ` · ${st.ignored} ignored (heard but not felt)` : "");
-    const lastM = motion.length ? motion[motion.length - 1].t : 0;
-    $("gateTxt").textContent = !$("gate").checked ? "Off: every sharp sound counts as a knock."
-      : performance.now() - lastM > 1000 ? "No motion readings on this phone, so every sharp sound counts."
-      : st.lastJolt ? `Last knock: jolt ${st.lastJolt.j.toFixed(3)}, needed ${st.lastJolt.need.toFixed(3)} m/s². If real knocks get ignored, untick this.` : "Knock once to see how hard the phone feels it.";
+    $("counts").textContent = `${st.sent} taps sent` + (st.felt ? ` (${st.felt} felt, not heard)` : "");
   }
 })();
 </script>

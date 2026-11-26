@@ -99,23 +99,22 @@ the phone. Anyone who has the room code can play on that stage.
 https://atharva-729.github.io/desk-band/band/ (pages in [`docs/band/`](docs/band/)). A group exercise for video calls: each person
 lays their phone on their own table and knocks next to it; the stage page plays the whole band and is shared into the call.
 
-- **Join order = instrument:** 1 Drums, 2 Strings, 3 Synth lead, 4 Bass, 5 Piano chords, 6 Marimba, 7 Shakers & claps,
-  8 Dhol & tabla, 9 Arpeggiator. Someone leaves: the next person to join gets their instrument. A 10th phone is told the band is full.
-- **Developer code:** a second, smaller QR on the stage. That phone gets a picker for any of the 9 instruments, switchable
-  any time, and doesn't take a place in the join order (the card shows "+ dev: name" next to the player).
+- **Pick an instrument, first come, first served:** Drums, Strings, Synth lead, Bass, Piano chords, Marimba, Shakers &
+  claps, Dhol & tabla, Arpeggiator. A new phone starts on the first free one (so tapping works straight away) and can switch
+  to any free one; taken ones are blacked out with the owner's name. When someone leaves, theirs is free again.
 - **Tap anywhere (this version):** no training. Any knock plays; the instrument decides *which* sound. Drums: kick on beats
   1 and 3, snare on 2 and 4, hi-hat between. Bass, strings, piano and arpeggiator follow a 4-chord loop (C · G · Am · F by
   default); synth lead and marimba walk the C pentatonic scale and land on chord notes on the beat. Hard knocks add a
   crash, a tambourine, a long chord or a jump up.
 - **On the beat despite the lag:** a knock reaches the stage about 0.2 s late, so the stage plays it on the next half-beat
   (strings and arpeggiator: next beat) of a shared clock. A metronome starts slow (70 BPM, ±5 buttons, 50–140).
-- **Only knocks the phone feels:** in a call, each person's laptop plays the band, and the phone could hear those drums.
-  A sound counts only if the phone's motion sensor also jolts: at least 0.03 m/s² and twice the jolt of the 0.3 s before.
-  In 1,119 recorded Desk Band knocks, 95% jolted the phone by 0.055 m/s² or more (median 0.13). Players can untick it.
+- **Heard or felt:** a tap counts if the mic hears it (Desk Band's knock detector) **or** the motion sensor feels a jolt
+  (over 0.05 m/s² and 4× the phone's resting shake). A tap that's both is counted once. Soft taps the mic misses still play.
+  (A first version counted only taps the phone felt, to ignore laptop speakers; it missed too many real, light taps.)
 - **Same stack as the flute and theremin:** GitHub Pages, QR join, the public MQTT relay ([`docs/play/relay.js`](docs/play/relay.js)),
   Desk Band's knock detector ([`docs/band/core.js`](docs/band/core.js), a copy of `static/core.js`), synthesised sounds.
-- **Tested** (`node tools/band-online/e2e.js`, headless Chrome through the real relay, fake knocks and jolts): 10 phones
-  and a developer phone, join order, all 9 instruments sounding, grid placement, the felt-gate, tempo changes, leaving and rejoining. One-way lag
+- **Tested** (`node tools/band-online/e2e.js`, headless Chrome through the real relay, fake knocks and jolts): 10 phones:
+  picking and refusing taken instruments, all 9 sounding, grid placement, heard-or-felt (counted once), tempo, leaving and rejoining. One-way lag
   180–197 ms. Not tested yet: real phones, real people, a real call.
 - **Next:** Spots mode (each person trains 4 spots, 2 on the laptop, 2 on the table; room for 5 for pentatonic), and
   WebRTC for the drums if the lag turns out to matter.

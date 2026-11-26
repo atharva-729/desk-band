@@ -70,63 +70,69 @@ const FAKE_MOTION = `
     check((await stage.js("window.__band.clicks")) >= 2, "metronome clicks on the beat");
     check((await stage.text("#bpm")) === "70", "tempo starts slow, at 70 BPM");
 
-    // ---- three phones join, in order ----
-    for (let k = 0; k < 3; k++) await join(k);
-    check(await stage.until(`(() => { const r = window.__band.roles; return ["Asha","Ben","Chen"].every((n, k) => r[k].player && window.__band.players.get(r[k].player).name === n); })()`, 15000),
-      "join order: 1st Drums, 2nd Strings, 3rd Synth lead");
-    check(await phones[0].until(`document.getElementById("roleName").textContent === "Drums"`, 8000), "the phone shows its instrument (Drums)");
-    check(await stage.until(`window.__band.log.filter((e) => e.role === "drums").length >= 4 && window.__band.log.some((e) => e.role === "strings")`, 15000), "knocks from the phones play on the stage");
+    const R = (k) => `window.__band.roles[${k}]`, OWNER = (k) => `(${R(k)}.player && window.__band.players.get(${R(k)}.player).name)`;
+    // ---- first come, first served ----
+    await join(0);
+    check(await stage.until(`${OWNER(0)} === "Asha"`, 15000), "the first phone starts on the first free instrument (Drums)");
+    check(await phones[0].until(`document.querySelectorAll("#picker button").length === 9 && document.querySelector('#picker [data-k="drums"]').classList.contains("mine")`, 8000),
+      "the phone shows all 9 instruments, its own highlighted");
+    await phones[0].js(`document.querySelector('#picker [data-k="strings"]').click()`);
+    check(await stage.until(`${OWNER(1)} === "Asha" && !${R(0)}.player`, 8000), "Asha picks Strings; Drums is free again");
+    check(await phones[0].until(`document.getElementById("roleName").textContent === "Strings"`, 5000), "her phone now says Strings");
+    await join(1);
+    check(await stage.until(`${OWNER(0)} === "Ben"`, 15000), "the next phone starts on the first free instrument (Drums)");
+    check(await phones[1].until(`(() => { const b = document.querySelector('#picker [data-k="strings"]'); return b.disabled && b.textContent.includes("Asha"); })()`, 8000),
+      "Ben sees Strings blacked out, with Asha's name on it");
+    await phones[1].js(`window.__band.link.pick("strings")`);
+    await wait(1500);
+    check(await stage.js(`${OWNER(1)} === "Asha" && ${OWNER(0)} === "Ben"`), "trying to take someone's instrument is refused");
+    await join(2);
+    check(await stage.until(`${OWNER(2)} === "Chen"`, 15000), "the third phone gets the next free one (Synth lead)");
+
+    // ---- sound ----
+    check(await stage.until(`window.__band.log.filter((e) => e.role === "drums").length >= 4 && window.__band.log.some((e) => e.role === "strings")`, 15000), "taps from the phones play on the stage");
     const log = await stage.js("window.__band.log");
     const drums = log.filter((e) => e.role === "drums"), strings = log.filter((e) => e.role === "strings");
-    check(drums.every((e) => e.slot % 0.5 === 0) && strings.every((e) => e.slot % 1 === 0), "every knock lands on the grid (drums half-beats, strings beats)");
+    check(drums.every((e) => e.slot % 0.5 === 0) && strings.every((e) => e.slot % 1 === 0), "every tap lands on the grid (drums half-beats, strings beats)");
     check(drums.every((e) => { const p = e.slot % 4; return p % 1 ? e.lbl === "hi-hat" : p === 1 || p === 3 ? e.lbl === "snare" : e.lbl.startsWith("kick"); }), "drums: kick on 1 and 3, snare on 2 and 4, hi-hat between");
     check(log.every((e) => e.t >= e.at), "nothing is scheduled in the past");
 
-    // ---- a developer: any instrument, outside the join order ----
-    const devUrl = await stage.js("window.__band.devUrl");
-    check(/dev=1/.test(devUrl) && await stage.js(`!!document.querySelector("#qrDev svg")`), "stage shows a separate developer QR code");
-    const dev = await chrome.page(devUrl + "&n=Zed", PHONE);
-    await dev.click("#start");
-    check(await dev.until(`document.querySelectorAll("#picker button").length === 9`, 8000), "developer phone shows all 9 instruments to pick from");
-    check(await stage.until(`[...window.__band.players.values()].some((p) => p.dev && p.name === "Zed")`, 15000) && !(await stage.js("window.__band.roles[3].player")),
-      "the developer joins without taking the next instrument (Bass is still free)");
-    await dev.js(`document.querySelector('#picker [data-k="piano"]').click()`);
-    check(await stage.until(`window.__band.log.some((e) => e.dev && e.role === "piano")`, 12000), "developer picks Piano and it plays");
-    check(await stage.until(`/dev: Zed/.test(window.__band.roles[4].el.querySelector(".devs").textContent)`, 5000), "the Piano card shows the developer");
-    await dev.js(`document.querySelector('#picker [data-k="arp"]').click()`);
-    check(await stage.until(`window.__band.log.some((e) => e.dev && e.role === "arp")`, 12000), "developer switches to the Arpeggiator and it plays");
-    phones.push(dev);
-
-    // ---- the "felt" gate ----
-    await phones[2].js("window.__feel = false");
-    const before = await phones[2].js("window.__band.ignored");
-    await wait(3000);
-    check((await phones[2].js("window.__band.ignored")) > before, "a sound the phone didn't feel is ignored (speaker or voice)");
-    check(await stage.until(`/sounds ignored/.test(window.__band.roles[2].el.querySelector(".st").textContent)`, 6000), "the stage card shows the ignored count");
-    await phones[2].js("window.__feel = true");
+    // ---- heard OR felt, counted once ----
+    const h0 = await phones[0].js("({ heard: window.__band.heard, felt: window.__band.felt })");
+    check(h0.heard >= 5 && h0.felt === 0, `a tap that's heard and felt counts once (${h0.heard} heard, ${h0.felt} felt-only)`);
+    await phones[2].js(`window.__band.det.thrMult = 1e9; window.__feel = false; window.__jolter = setInterval(() => shake(0.3), 450)`);   // a deaf mic, taps only felt
+    check(await phones[2].until("window.__band.felt >= 3", 8000), "a tap the mic misses but the phone feels still counts");
+    check(await stage.until(`/felt, not heard/.test(${R(2)}.el.querySelector(".st").textContent) && window.__band.log.filter((e) => e.role === "synth").length >= 3`, 8000),
+      "felt taps play on the stage, and the card says so");
+    await phones[2].js(`clearInterval(window.__jolter); window.__band.det.thrMult = 4; window.__feel = true`);
 
     // ---- tempo ----
     await stage.click("#faster");
     check((await stage.text("#bpm")) === "75", "+5 raises the tempo");
     check(await phones[0].until(`window.__band.link.bpm === 75`, 5000), "phones hear the new tempo");
 
-    // ---- someone leaves, the next joiner takes the free instrument ----
+    // ---- someone leaves, their instrument is free again ----
     await phones[1].js("location.href = 'about:blank'");
-    check(await stage.until(`!window.__band.roles[1].player`, 8000), "leaving frees Strings");
+    check(await stage.until(`!${R(0)}.player`, 8000), "Ben leaving frees Drums");
+    check(await phones[0].until(`!document.querySelector('#picker [data-k="drums"]').disabled`, 5000), "other phones see Drums free again");
     await join(3);
-    check(await stage.until(`window.__band.roles[1].player && window.__band.players.get(window.__band.roles[1].player).name === "Dev"`, 15000), "the next person to join gets the free Strings");
+    check(await stage.until(`${OWNER(0)} === "Dev"`, 15000), "the next person to join gets the free Drums");
 
     // ---- fill the band: 9 instruments, the 10th phone is told it's full ----
     for (let k = 4; k < 11; k++) await join(k);   // 9 in the band (Ben left) + 1 too many
     check(await stage.until(`window.__band.roles.every((r) => r.player)`, 20000), "all 9 instruments taken");
-    check(await phones[10].until(`document.getElementById("roleName").textContent === "The band is full"`, 10000), "the 10th phone is told the band is full");
+    // the last two joined at nearly the same moment, so either may be the one left out
+    await wait(3000);
+    const outIx = [];
+    for (let k = 4; k < 11; k++) if (await phones[k].js(`document.getElementById("roleName").textContent === "No instrument free" && [...document.querySelectorAll("#picker button")].every((b) => b.disabled)`)) outIx.push(k);
+    check(outIx.length === 1, "exactly one phone (the 10th) sees every instrument taken");
     await wait(6000);
     const all = await stage.js("window.__band.log");
     const seen = new Set(all.map((e) => e.role));
     check(["drums", "strings", "synth", "bass", "piano", "marimba", "shakers", "desi", "arp"].every((k) => seen.has(k)), "all 9 instruments played: " + [...seen].join(", "));
     const lags = await stage.js(`[...window.__band.players.values()].filter((p) => p.rtt != null).map((p) => Math.round(p.rtt / 2))`);
     console.log("  lag one way per phone (ms): " + lags.join(", "));
-    await stage.shot(path.join(out, "stage.png")); await phones[0].shot(path.join(out, "phone-drums.png")); await phones[10].shot(path.join(out, "phone-full.png"));
+    await stage.shot(path.join(out, "stage.png")); await phones[0].shot(path.join(out, "phone-drums.png")); await phones[outIx[0] ?? 10].shot(path.join(out, "phone-full.png"));
     const errs = [stage, ...phones.filter(Boolean)].flatMap((p) => p.errors);
     check(errs.length === 0, "no page errors" + (errs.length ? ": " + errs.slice(0, 3).join(" | ") : ""));
   } catch (e) { console.log("FAIL exception: " + e.stack); failed++; }
