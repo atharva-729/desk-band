@@ -15,11 +15,15 @@
   .knock.sent { background:var(--c, var(--ok)); color:#101218; transition:none; }
   .knock.ign { background:#2a2d38; color:var(--warn); transition:none; }
   .room { font-size:26px; font-weight:800; letter-spacing:3px; }
+  .picker { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin:10px 0; }
+  .picker button { padding:10px 4px; font-size:13px; border-color:var(--line); }
+  .picker button.on { background:var(--c); border-color:var(--c); color:#101218; }
+  .devtag { display:inline-block; font-size:11px; font-weight:800; letter-spacing:.5px; color:#101218; background:var(--warn); border-radius:6px; padding:2px 7px; margin-left:6px; vertical-align:middle; }
 </style>
 </head>
 <body>
   <div class="link" id="link"><i></i><span id="linkTxt">Not started</span></div>
-  <h1>Desk Band Together</h1>
+  <h1>Desk Band Together<span class="devtag hidden" id="devTag">DEVELOPER</span></h1>
   <div class="sub">Knock the table next to your phone. The band on the shared screen plays it, on the beat.</div>
 
   <div id="intro">
@@ -43,6 +47,10 @@
   <div id="main" class="hidden">
     <button id="micWarn" class="warn hidden">Mic stopped: tap to turn it back on</button>
     <div class="role" id="role"><div class="you">You are playing</div><div class="nm" id="roleName">…</div><div class="how" id="roleHow">Waiting for the stage to give you an instrument</div></div>
+    <div class="hidden" id="devBox">
+      <div class="small">Developer: pick any instrument and switch whenever you like. You don't take anyone's place in the band.</div>
+      <div class="picker" id="picker"></div>
+    </div>
     <div class="knock" id="knock">Knock the table</div>
     <div class="small" style="text-align:center;margin-top:6px" id="counts">0 knocks sent</div>
     <div class="card">
@@ -66,6 +74,11 @@
   const q = new URLSearchParams(location.search);
   const JOLT_MIN = 0.03;   // m/s²: 95% of 1,119 recorded Desk Band knocks jolted the phone by 0.055 or more (median 0.13)
   let room = Relay.cleanRoom(q.get("r")), link = null, det = null, ctx = null, mic = null;
+  const DEV = q.get("dev") === "1";
+  let pick = "drums";
+  try { pick = localStorage.getItem("band.devPick") || pick; } catch {}
+  if (!BandMusic.ROLES.some((r) => r.key === pick)) pick = "drums";
+  $("devTag").classList.toggle("hidden", !DEV);
   const st = window.__band = { sent: 0, ignored: 0, felt: [], lastJolt: null };
   try { $("name").value = q.get("n") || localStorage.getItem("pb.name") || ""; } catch {}
   $("roomTxt").textContent = room || "–";
@@ -113,9 +126,10 @@
     window.addEventListener("devicemotion", onMotion);
     try { await startMic(); } catch (err) { alert("Could not start the microphone: " + err.message + "\n\nAllow the microphone for this page and try again."); return; }
     try { if ("wakeLock" in navigator) await navigator.wakeLock.request("screen"); } catch {}
-    link = new BandLink(room, q.get("b"), name);
+    link = new BandLink(room, q.get("b"), name, DEV, DEV ? pick : null);
     st.link = link;
-    link.onrole = showRole;
+    link.onrole = DEV ? () => {} : showRole;   // a developer's instrument is whatever they picked here
+    if (DEV) { $("devBox").classList.remove("hidden"); buildPicker(); showRole(pick); }
     $("intro").classList.add("hidden"); $("main").classList.remove("hidden");
     $("info").textContent = `${mic.label} · ${(ctx.sampleRate / 1000).toFixed(1)} kHz`;
     setInterval(draw, 250);
@@ -148,6 +162,20 @@
     st.sent++; k.classList.add("sent"); k.textContent = v > 0.85 ? "KNOCK!" : "knock";
   }
 
+  function buildPicker() {
+    $("picker").innerHTML = "";
+    for (const r of BandMusic.ROLES) {
+      const b = document.createElement("button");
+      b.textContent = r.name; b.style.setProperty("--c", r.color); b.dataset.k = r.key;
+      b.classList.toggle("on", r.key === pick);
+      b.onclick = () => {
+        pick = r.key; try { localStorage.setItem("band.devPick", pick); } catch {}
+        [...$("picker").children].forEach((x) => x.classList.toggle("on", x.dataset.k === pick));
+        link.setPick(pick); showRole(pick);
+      };
+      $("picker").appendChild(b);
+    }
+  }
   function showRole(key) {
     const r = key && BandMusic.ROLES.find((x) => x.key === key);
     $("role").style.setProperty("--c", r ? r.color : "");

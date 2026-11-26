@@ -4,11 +4,14 @@
   "use strict";
   const R = root.Relay;
 
-  function BandLink(room, b, name) {
+  // dev: a developer phone (any instrument, not in the join order); pick: the instrument it wants
+  function BandLink(room, b, name, dev, pick) {
+    this.dev = !!dev; this.pick = pick || null;
     this.room = R.cleanRoom(room);
     this.b = Math.max(0, Math.min(R.BROKERS.length - 1, +b || 0));
     this.name = String(name || "").trim().slice(0, 24);
-    try { this.id = sessionStorage.getItem("band.id"); if (!this.id) { this.id = R.newId(); sessionStorage.setItem("band.id", this.id); } }
+    const key = this.dev ? "band.devid" : "band.id";   // a developer tab is a different player from a normal one
+    try { this.id = sessionStorage.getItem(key); if (!this.id) { this.id = R.newId(); sessionStorage.setItem(key, this.id); } }
     catch { this.id = R.newId(); }
     this.T = R.topics("band-" + this.room);
     this.c = null; this.seq = 0; this.rtt = null; this.stageAt = 0; this.tries = 0;
@@ -37,11 +40,13 @@
       this.send({ t: "join" });
     }).catch(() => this._retry());
   };
+  BandLink.prototype.setPick = function (k) { this.pick = k; this.send({ t: "join" }); };
   BandLink.prototype._setRole = function (r) { if (r !== this.role) { this.role = r; if (this.onrole) this.onrole(r); } };
   BandLink.prototype._retry = function () { const ms = Math.min(8000, 1000 * Math.pow(2, this.tries++)); setTimeout(() => this._connect(), ms); };
   BandLink.prototype.send = function (msg) {
     if (!this.c || !this.c.open) return false;
     msg.n = this.name; msg.seq = ++this.seq; if (this.rtt != null) msg.rtt = this.rtt;
+    if (this.dev) { msg.dev = 1; msg.pick = this.pick; }
     return this.c.publish(this.T.phone(this.id), msg);
   };
   // -> { state: "connecting" | "nostage" | "ok", text }

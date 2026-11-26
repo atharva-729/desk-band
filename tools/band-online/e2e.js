@@ -82,6 +82,21 @@ const FAKE_MOTION = `
     check(drums.every((e) => { const p = e.slot % 4; return p % 1 ? e.lbl === "hi-hat" : p === 1 || p === 3 ? e.lbl === "snare" : e.lbl.startsWith("kick"); }), "drums: kick on 1 and 3, snare on 2 and 4, hi-hat between");
     check(log.every((e) => e.t >= e.at), "nothing is scheduled in the past");
 
+    // ---- a developer: any instrument, outside the join order ----
+    const devUrl = await stage.js("window.__band.devUrl");
+    check(/dev=1/.test(devUrl) && await stage.js(`!!document.querySelector("#qrDev svg")`), "stage shows a separate developer QR code");
+    const dev = await chrome.page(devUrl + "&n=Zed", PHONE);
+    await dev.click("#start");
+    check(await dev.until(`document.querySelectorAll("#picker button").length === 9`, 8000), "developer phone shows all 9 instruments to pick from");
+    check(await stage.until(`[...window.__band.players.values()].some((p) => p.dev && p.name === "Zed")`, 15000) && !(await stage.js("window.__band.roles[3].player")),
+      "the developer joins without taking the next instrument (Bass is still free)");
+    await dev.js(`document.querySelector('#picker [data-k="piano"]').click()`);
+    check(await stage.until(`window.__band.log.some((e) => e.dev && e.role === "piano")`, 12000), "developer picks Piano and it plays");
+    check(await stage.until(`/dev: Zed/.test(window.__band.roles[4].el.querySelector(".devs").textContent)`, 5000), "the Piano card shows the developer");
+    await dev.js(`document.querySelector('#picker [data-k="arp"]').click()`);
+    check(await stage.until(`window.__band.log.some((e) => e.dev && e.role === "arp")`, 12000), "developer switches to the Arpeggiator and it plays");
+    phones.push(dev);
+
     // ---- the "felt" gate ----
     await phones[2].js("window.__feel = false");
     const before = await phones[2].js("window.__band.ignored");

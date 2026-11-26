@@ -22,6 +22,9 @@
     try { const qr = qrcode(0, "M"); qr.addData(u.href); qr.make(); $("qr").innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true }); }
     catch { $("qr").textContent = "(QR code didn't load: open the address below on the phone)"; }
     S.joinUrl = u.href;
+    // developer code: the same phone page, plus a picker for any instrument (not part of the join order)
+    const d = new URL(u.href); d.searchParams.set("dev", "1"); S.devUrl = d.href;
+    try { const qr = qrcode(0, "M"); qr.addData(d.href); qr.make(); $("qrDev").innerHTML = qr.createSvgTag({ cellSize: 3, margin: 2, scalable: true }); } catch {}
   }
   showJoin();
   async function connect() {
@@ -95,6 +98,10 @@
         visual.push({ t, fn: () => showBeat(b) });
       }
       for (const r of roles) if (r.def.tick && r.bus) { const lbl = r.def.tick(b, t, r.mem, V, r.bus, M); if (lbl) visual.push({ t, fn: () => flash(r, lbl) }); }
+      for (const p of players.values()) {   // developers playing the arpeggiator keep their own run going
+        const r = p.dev && roleByKey(p.pick);
+        if (r && r.def.tick && r.bus) { const lbl = r.def.tick(b, t, p.mem, V, r.bus, M); if (lbl) visual.push({ t, fn: () => flash(r, lbl) }); }
+      }
       nextTick += 0.25;
     }
   }
@@ -120,14 +127,15 @@
 
   // ---------- instruments and players ----------
   const roles = B.ROLES.map((def, k) => ({ def, k, player: null, mem: {}, muted: false, bus: null, lastSlot: -1e9 }));
-  const players = new Map();   // phone id -> { id, name, role, seen, knocks, ignored, rtt }
+  const players = new Map();   // phone id -> { id, name, role, dev, pick, mem, lastSlot, seen, knocks, ignored, rtt }
+  const roleByKey = (k) => roles.find((r) => r.def.key === k);
   S.players = players; S.roles = roles;
   function makeBus(r) { const g = ctx.createGain(); g.gain.value = r.muted ? 0 : r.def.gain; g.connect(master); return g; }
   roles.forEach((r) => {
     const el = document.createElement("div");
     el.className = "rc free"; el.style.setProperty("--c", r.def.color);
     el.innerHTML = `<div class="flash"></div><div class="h"><span class="num">${r.k + 1}</span><span class="nm">${r.def.name}</span><button class="ghost mute">Mute</button></div>
-      <div class="who"></div><div class="last">–</div><div class="how">${r.def.how}</div><div class="st"></div>`;
+      <div class="who"></div><div class="devs"></div><div class="last">–</div><div class="how">${r.def.how}</div><div class="st"></div>`;
     r.el = el; r.q = (s) => el.querySelector(s);
     r.q(".mute").onclick = () => { r.muted = !r.muted; r.q(".mute").textContent = r.muted ? "Muted" : "Mute"; r.q(".mute").classList.toggle("muted", r.muted); if (r.bus) r.bus.gain.setTargetAtTime(r.muted ? 0 : r.def.gain, ctx.currentTime, 0.03); };
     $("roles").appendChild(el);
@@ -139,17 +147,23 @@
     r.player = p.id; r.mem = {}; r.lastSlot = -1e9; p.role = r.k;
   }
   function release(p) { if (p.role != null) { const r = roles[p.role]; if (r.player === p.id) r.player = null; } players.delete(p.id); hello(); }
-  function playerFor(id) {
+  function playerFor(id, m) {
     let p = players.get(id);
-    if (!p) { p = { id, name: "", role: null, seen: 0, knocks: 0, ignored: 0, rtt: null }; players.set(id, p); assign(p); hello(); tellRole(p); }
+    if (!p) {
+      p = { id, name: "", role: null, dev: !!m.dev, pick: null, mem: {}, lastSlot: -1e9, seen: 0, knocks: 0, ignored: 0, rtt: null };
+      players.set(id, p);
+      if (!p.dev) assign(p);   // developers don't take a place in the join order
+      hello(); tellRole(p);
+    }
     p.seen = performance.now();
     return p;
   }
-  const tellRole = (p) => send(T.to(p.id), { t: "role", role: p.role == null ? null : roles[p.role].def.key });
+  const keyOf = (p) => (p.dev ? p.pick : p.role == null ? null : roles[p.role].def.key);
+  const tellRole = (p) => send(T.to(p.id), { t: "role", role: keyOf(p) });
 
   function hello() {
     const map = {};
-    for (const p of players.values()) map[p.id] = p.role == null ? null : roles[p.role].def.key;
+    for (const p of players.values()) map[p.id] = keyOf(p);
     send(T.stage, { t: "hello", bpm, roles: map, full: roles.every((r) => r.player) });
   }
   setInterval(hello, 1000);
@@ -158,11 +172,12 @@
     const id = topic.slice(topic.lastIndexOf("/") + 1);
     let m; try { m = JSON.parse(s); } catch { return; }
     if (m.t === "bye") { const p = players.get(id); if (p) release(p); return; }
-    const p = playerFor(id);
+    const p = playerFor(id, m);
+    if (p.dev && m.pick && roleByKey(m.pick) && m.pick !== p.pick) { p.pick = m.pick; p.mem = {}; p.lastSlot = -1e9; tellRole(p); }
     if (m.n) p.name = String(m.n).slice(0, 24);
     if (m.rtt != null) p.rtt = m.rtt;
     if (m.t === "ping") { send(T.to(id), { t: "pong", ts: m.ts }); return; }
-    if (m.t === "join") { if (p.role == null) assign(p); tellRole(p); return; }
+    if (m.t === "join") { if (p.role == null && !p.dev) assign(p); tellRole(p); return; }
     if (m.t === "stat") { p.ignored = m.ign || 0; return; }
     if (m.t === "hit") hit(p, Math.max(0.15, Math.min(1, +m.v || 0.5)));
   }
@@ -170,16 +185,17 @@
   // A knock: play it on the next free slot of this instrument's grid (half a beat, or a beat), at least 30 ms away.
   function hit(p, v) {
     p.knocks++;
-    if (p.role == null) return;
-    const r = roles[p.role];
+    const r = p.dev ? roleByKey(p.pick) : p.role == null ? null : roles[p.role];
+    if (!r) return;
+    const own = p.dev ? p : r;   // a developer keeps their own tune position and grid slot, separate from the player's
     if (!ctx || ctx.state !== "running") { flash(r, "(start the band)"); return; }
     const g = r.def.grid, bMin = beatAt(ctx.currentTime + 0.03);
     let slot = Math.ceil(bMin / g - 1e-9) * g;
-    if (slot <= r.lastSlot) slot = r.lastSlot + g;           // knocking faster than the grid: the next slot along
+    if (slot <= own.lastSlot) slot = own.lastSlot + g;       // knocking faster than the grid: the next slot along
     if (slot - bMin > 2 * g) { S.dropped++; return; }         // way too fast: drop it rather than pile up
-    r.lastSlot = slot;
-    const t = timeAt(slot), lbl = r.def.play(slot, t, v, r.mem, V, r.bus, M);
-    S.log.push({ role: r.def.key, slot, v, lbl, at: ctx.currentTime, t });
+    own.lastSlot = slot;
+    const t = timeAt(slot), lbl = r.def.play(slot, t, v, own.mem, V, r.bus, M);
+    S.log.push({ role: r.def.key, dev: p.dev, slot, v, lbl, at: ctx.currentTime, t });
     if (S.log.length > 500) S.log.shift();
     visual.push({ t, fn: () => flash(r, lbl) });
   }
@@ -196,6 +212,8 @@
       const p = r.player ? players.get(r.player) : null;
       r.el.classList.toggle("free", !p);
       r.q(".who").textContent = p ? (p.name || "Player") : (roles.findIndex((x) => !x.player) === r.k ? "Free: the next person to join gets this" : "Free");
+      const devs = [...players.values()].filter((d) => d.dev && d.pick === r.def.key).map((d) => d.name || "developer");
+      r.q(".devs").textContent = devs.length ? "+ dev: " + devs.join(", ") : "";
       r.q(".st").textContent = !p ? "" : (now - p.seen > QUIET_MS ? "not heard from for a while · " : "") +
         `${p.knocks} knocks` + (p.ignored ? ` · ${p.ignored} sounds ignored (not felt)` : "") + (p.rtt != null ? ` · lag ≈ ${Math.round(p.rtt / 2)} ms` : "");
     }

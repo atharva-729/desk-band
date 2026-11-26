@@ -22,9 +22,13 @@
   .pill { font-size:12px; padding:4px 10px; border-radius:20px; border:1px solid var(--line); color:var(--dim); white-space:nowrap; }
   .pill.on { color:var(--ok); border-color:var(--ok); } .pill.bad { color:var(--warn); border-color:var(--warn); }
   .lbl { color:var(--dim); font-size:12px; text-transform:uppercase; letter-spacing:.5px; }
-  .top { display:grid; grid-template-columns:230px 300px minmax(0, 1fr); gap:16px; margin-bottom:16px; }
-  @media (max-width: 1100px) { .top { grid-template-columns:230px minmax(0, 1fr); } .top .help { grid-column:1 / -1; } }
+  .top { display:grid; grid-template-columns:230px 150px 300px minmax(0, 1fr); gap:16px; margin-bottom:16px; }
+  @media (max-width: 1250px) { .top { grid-template-columns:230px 150px minmax(0, 1fr); } .top .help { grid-column:1 / -1; } }
   @media (max-width: 640px) { .top { grid-template-columns:1fr; } }
+  .dev { display:flex; flex-direction:column; gap:6px; }
+  .dev h2 { margin:0; }
+  #qrDev svg { width:100%; height:auto; background:#fff; border-radius:8px; display:block; }
+  .rc .devs { color:var(--warn); font-size:12px; min-height:0; }
   #qr svg { width:100%; height:auto; background:#fff; border-radius:10px; display:block; }
   .code { font-size:28px; font-weight:800; letter-spacing:4px; text-align:center; margin-top:6px; }
   #joinUrl { font-size:11px; color:var(--dim); word-break:break-all; text-align:center; }
@@ -76,6 +80,11 @@
       <div id="qr"></div>
       <div class="code" id="code">–</div>
       <div id="joinUrl"></div>
+    </div>
+    <div class="card dev">
+      <h2>Developer</h2>
+      <div id="qrDev"></div>
+      <div class="sub" style="font-size:12px">Play any instrument, switch any time. Doesn't take a player's place.</div>
     </div>
     <div class="card now">
       <div class="lbl">Now playing</div>
