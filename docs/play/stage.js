@@ -134,6 +134,7 @@
   const thStore = { get(k, d) { try { const v = localStorage.getItem("pb-th-" + k); return v == null ? d : v; } catch { return d; } },
                     set(k, v) { try { localStorage.setItem("pb-th-" + k, v); } catch {} } };
   const TH_LOW = 2, TH_HIGH = 24;   // lowest note 2 cm above the phone, highest 24 cm; every note gets at least 3 cm
+  const TH_MAJOR = [60, 62, 64, 65, 67, 69, 71, 72];   // full scale, C4 up; 7 notes fit in 2-24 cm (C4 to B4)
 
   // Test sound: a short flute phrase on its own voice
   let demo = null;
@@ -146,8 +147,8 @@
   };
 
   // ---------- players ----------
-  const players = new Map();
-  window.__stage.players = players;
+  const players = new Map(), seqs = new Map();
+  window.__stage.players = players; window.__stage.seqs = seqs;
   let joined = 0;
   function getPlayer(id, m) {
     let p = players.get(id);
@@ -161,17 +162,25 @@
       p.el.innerHTML = head + `<div class="pnote">–</div><div class="ladder">${"<div></div>".repeat(8)}</div><div class="meter"><i></i></div><div class="psub"></div>`;
     } else {
       p.el.innerHTML = head + `<div class="trow"><div class="pnote">–</div><div class="tcm"></div></div><canvas class="zones"></canvas><canvas class="map"></canvas>` +
-        `<div class="tctl"><span class="seg"><button data-m="easy">Easy notes</button><button data-m="glide">Glide</button></span>` +
+        `<div class="tctl"><span class="seg"><button data-m="penta">Pentatonic</button><button data-m="major">Full scale</button><button data-m="glide">Glide</button></span>` +
         `<span class="seg"><button data-v="theremin">Theremin voice</button><button data-v="marimba">Marimba</button></span></div><div class="psub"></div>`;
       p.zc = p.el.querySelector("canvas.zones");
-      p.mapper = new TH.Mapper({ low: TH_LOW, high: TH_HIGH, mode: thStore.get("mode", "easy") });
+      p.mapper = new TH.Mapper({ low: TH_LOW, high: TH_HIGH });
       p.tvoice = thStore.get("voice", "theremin");
       p.out = { gate: false };
+      // Pentatonic (the default: no wrong notes), full C major scale, or a continuous glide
+      const setPlay = (k) => {
+        p.play = k;
+        p.mapper.o.mode = k === "glide" ? "glide" : "easy";
+        p.mapper.o.notes = k === "major" ? TH_MAJOR : TH.EASY;
+        p.mapper.layout(); p.mapper.zone = -1;
+      };
+      setPlay(thStore.get("play", "penta"));
       const segs = () => {
-        p.el.querySelectorAll("[data-m]").forEach((b) => b.classList.toggle("on", b.dataset.m === p.mapper.o.mode));
+        p.el.querySelectorAll("[data-m]").forEach((b) => b.classList.toggle("on", b.dataset.m === p.play));
         p.el.querySelectorAll("[data-v]").forEach((b) => b.classList.toggle("on", b.dataset.v === p.tvoice));
       };
-      p.el.querySelectorAll("[data-m]").forEach((b) => { b.onclick = () => { p.mapper.o.mode = b.dataset.m; p.mapper.zone = -1; thStore.set("mode", b.dataset.m); segs(); }; });
+      p.el.querySelectorAll("[data-m]").forEach((b) => { b.onclick = () => { setPlay(b.dataset.m); thStore.set("play", b.dataset.m); segs(); }; });
       p.el.querySelectorAll("[data-v]").forEach((b) => { b.onclick = () => { p.tvoice = b.dataset.v; thStore.set("voice", b.dataset.v); segs(); }; });
       segs();
     }
@@ -193,6 +202,13 @@
   function onMessage(topic, s) {
     const id = topic.slice(topic.lastIndexOf("/") + 1);
     let m; try { m = JSON.parse(s); } catch { return; }
+    // count arrivals and gaps in each phone's numbering (pings included), for load tests
+    if (m.seq != null) {
+      const sq = seqs.get(id) || { rx: 0, lost: 0, last: 0 };
+      if (sq.last && m.seq > sq.last + 1) sq.lost += m.seq - sq.last - 1;
+      if (m.seq > sq.last || sq.last - m.seq > 100) sq.last = m.seq;   // a reloaded page starts again from 1
+      sq.rx++; seqs.set(id, sq);
+    }
     if (m.t === "ping") { if (client) client.publish(T.to(id), { t: "pong", ts: m.ts }); return; }
     if (m.t === "bye") { const p = players.get(id); if (p) removePlayer(p); return; }
     if (m.t !== "s" || (m.i !== "flute" && m.i !== "theremin")) return;
@@ -227,7 +243,7 @@
   // ---------- drawing ----------
   function drawFlute(p) {
     const m = p.last, on = !!(m && m.on && !p.silent);
-    const name = (k) => FC.noteName(FC.noteFor(k, m.scale || "major")).replace(/\d+$/, "");
+    const name = (k) => FC.noteName(FC.noteFor(k, m.scale || "pentatonic")).replace(/\d+$/, "");
     p.q(".pnote").textContent = m.step == null ? "–" : name(m.step);
     p.q(".pnote").classList.toggle("on", on);
     const cells = p.q(".ladder").children;
@@ -237,7 +253,7 @@
     }
     p.q(".meter i").style.width = ((on ? m.level : 0) * 100).toFixed(0) + "%";
     p.q(".psub").textContent = p.silent ? "not sending (screen locked or out of range?)"
-      : `${m.scale === "pentatonic" ? "Pentatonic" : "Song mode (C major)"} · turn for ${m.rollMode === "bend" ? "a bend" : "vibrato"}` + (m.step == null ? " · range not set on the phone yet" : "");
+      : `${m.scale === "pentatonic" ? "Pentatonic" : "Full scale (C major)"} · turn for ${m.rollMode === "bend" ? "a bend" : "vibrato"}` + (m.step == null ? " · range not set on the phone yet" : "");
   }
   function drawTheremin(p) {
     const m = p.last, o = p.out, on = !!(o.gate && !p.silent);

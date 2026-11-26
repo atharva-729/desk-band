@@ -43,7 +43,7 @@
       <div class="meter"><i id="breathBar"></i></div>
     </div>
     <div class="row">
-      <select id="scale"><option value="major">Song mode (C major)</option><option value="pentatonic">Pentatonic (can't sound bad)</option></select>
+      <select id="scale"><option value="pentatonic">Pentatonic (can't sound bad)</option><option value="major">Full scale (C major, for songs)</option></select>
     </div>
     <div class="row">
       <select id="rollMode"><option value="vibrato">Turn = vibrato</option><option value="bend">Turn = bend ±1</option></select>
@@ -79,14 +79,15 @@
   const smoother = new C.VecSmoother(SMOOTH_MS);
   let cal = null, stepper = null, tilt = null, step = null, mic = null, feats = null, det = null;
   try { cal = JSON.parse(localStorage.getItem("tiltflute.cal") || "null"); } catch {}
-  let scale = "major", rollMode = "vibrato";
-  try { scale = localStorage.getItem("tiltflute.scale") || scale; rollMode = localStorage.getItem("tiltflute.roll") || rollMode; } catch {}
+  // Pentatonic by default ("scale2": a choice saved before pentatonic became the default is ignored once)
+  let scale = "pentatonic", rollMode = "vibrato";
+  try { scale = localStorage.getItem("tiltflute.scale2") || scale; rollMode = localStorage.getItem("tiltflute.roll") || rollMode; } catch {}
   $("scale").value = scale; $("rollMode").value = rollMode;
 
   const nameOf = (k) => C.noteName(C.noteFor(k, scale)).replace(/\d+$/, "");
   function buildLadder() { $("ladder").innerHTML = Array.from({ length: STEPS }, (_, i) => `<div>${nameOf(i)}</div>`).join("") + '<div class="pos"></div>'; }
   buildLadder();
-  $("scale").addEventListener("change", () => { scale = $("scale").value; try { localStorage.setItem("tiltflute.scale", scale); } catch {} buildLadder(); send(true); });
+  $("scale").addEventListener("change", () => { scale = $("scale").value; try { localStorage.setItem("tiltflute.scale2", scale); } catch {} buildLadder(); send(true); });
   $("rollMode").addEventListener("change", () => { rollMode = $("rollMode").value; try { localStorage.setItem("tiltflute.roll", rollMode); } catch {} send(true); });
   function applyCal(c) {
     cal = c;
@@ -105,7 +106,8 @@
       const g = e.accelerationIncludingGravity;
       if (!g || g.x == null) return;
       s.g = [g.x, g.y, g.z]; s.gs = smoother.push(s.g, performance.now());
-      if (cal) { tilt = C.tiltAngles(s.gs, cal); const was = step; step = stepper.update(tilt.pos); if (step !== was) send(true); }
+      // (stepper: wait until a saved range is fully set up; motion can arrive while the mic is still starting)
+      if (cal && stepper) { tilt = C.tiltAngles(s.gs, cal); const was = step; step = stepper.update(tilt.pos); if (step !== was) send(true); }
     });
     try { await startMic(); } catch (err) {
       alert("Could not start the microphone: " + err.message + "\n\nAllow the microphone for this page and try again.");
