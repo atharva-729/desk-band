@@ -17,7 +17,7 @@
 
   function showJoin() {
     const u = new URL("phone.html", location.href);
-    u.hash = ""; u.search = `?r=${room}&b=${brokerIx}&v=4`;   // v: a new address each version, so phones don't use a cached old page
+    u.hash = ""; u.search = `?r=${room}&b=${brokerIx}&v=5`;   // v: a new address each version, so phones don't use a cached old page
     $("code").textContent = room; $("joinUrl").textContent = u.href; $("brokerName").textContent = R.BROKERS[brokerIx].name;
     try { const qr = qrcode(0, "M"); qr.addData(u.href); qr.make(); $("qr").innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true }); }
     catch { $("qr").textContent = "(QR code didn't load: open the address below on the phone)"; }
@@ -120,9 +120,9 @@
 
   // ---------- instruments and players ----------
   // First come, first served: a new phone starts on the first free instrument (so knocking works straight away) and can
-  // switch to any instrument nobody else has. A 10th phone waits until one is free.
+  // add or drop any instrument nobody else has.
   const roles = B.ROLES.map((def, k) => ({ def, k, player: null, mem: {}, muted: false, bus: null, lastSlot: -1e9 }));
-  const players = new Map();   // phone id -> { id, name, role, seen, knocks, felt, rtt }
+  const players = new Map();   // phone id -> { id, name, roles (set of instrument indexes), seen, knocks, felt, rtt }
   const roleByKey = (k) => roles.find((r) => r.def.key === k);
   S.players = players; S.roles = roles;
   function makeBus(r) { const g = ctx.createGain(); g.gain.value = r.muted ? 0 : r.def.gain; g.connect(master); return g; }
@@ -135,25 +135,25 @@
     r.q(".mute").onclick = () => { r.muted = !r.muted; r.q(".mute").textContent = r.muted ? "Muted" : "Mute"; r.q(".mute").classList.toggle("muted", r.muted); if (r.bus) r.bus.gain.setTargetAtTime(r.muted ? 0 : r.def.gain, ctx.currentTime, 0.03); };
     $("roles").appendChild(el);
   });
-  function take(p, r) {   // give instrument r to player p (r must be free or already theirs)
-    if (p.role != null && roles[p.role].player === p.id) roles[p.role].player = null;
-    r.player = p.id; r.mem = {}; r.lastSlot = -1e9; p.role = r.k;
-  }
-  function assign(p) { if (p.role == null) { const r = roles.find((x) => !x.player); if (r) take(p, r); } }
-  function release(p) { if (p.role != null) { const r = roles[p.role]; if (r.player === p.id) r.player = null; } players.delete(p.id); hello(); }
+  // A phone can hold several instruments at once: one tap plays all of them. Tapping a free one adds it, tapping one
+  // of your own drops it. Others' instruments are off limits (first come, first served).
+  function take(p, r) { r.player = p.id; r.mem = {}; r.lastSlot = -1e9; p.roles.add(r.k); }
+  function drop(p, r) { if (r.player === p.id) r.player = null; p.roles.delete(r.k); }
+  function assign(p) { if (!p.roles.size) { const r = roles.find((x) => !x.player); if (r) take(p, r); } }
+  function release(p) { for (const k of p.roles) if (roles[k].player === p.id) roles[k].player = null; players.delete(p.id); hello(); }
   function playerFor(id) {
     let p = players.get(id);
-    if (!p) { p = { id, name: "", role: null, seen: 0, knocks: 0, felt: 0, rtt: null }; players.set(id, p); assign(p); hello(); tellRole(p); }
+    if (!p) { p = { id, name: "", roles: new Set(), seen: 0, knocks: 0, felt: 0, rtt: null }; players.set(id, p); assign(p); hello(); tellRole(p); }
     p.seen = performance.now();
     return p;
   }
-  const keyOf = (p) => (p.role == null ? null : roles[p.role].def.key);
-  const tellRole = (p) => send(T.to(p.id), { t: "role", role: keyOf(p) });
+  const keysOf = (p) => [...p.roles].sort((a, b) => a - b).map((k) => roles[k].def.key);
+  const tellRole = (p) => send(T.to(p.id), { t: "role", role: keysOf(p) });
 
   // Every second: who has which instrument, so each phone can black out the taken ones.
   function hello() {
     const map = {}, who = {};
-    for (const p of players.values()) map[p.id] = keyOf(p);
+    for (const p of players.values()) map[p.id] = keysOf(p);
     for (const r of roles) if (r.player) { const p = players.get(r.player); who[r.def.key] = (p && p.name) || "someone"; }
     send(T.stage, { t: "hello", bpm, roles: map, who, full: roles.every((r) => r.player) });
   }
@@ -168,9 +168,9 @@
     if (m.rtt != null) p.rtt = m.rtt;
     if (m.t === "ping") { send(T.to(id), { t: "pong", ts: m.ts }); return; }
     if (m.t === "join") { assign(p); tellRole(p); return; }
-    if (m.t === "pick") {   // switch instrument: only to a free one (first come, first served)
+    if (m.t === "pick") {   // toggle an instrument: add it if free, drop it if it's yours
       const r = roleByKey(m.k);
-      if (r && (!r.player || r.player === id)) take(p, r);
+      if (r && r.player === id) drop(p, r); else if (r && !r.player) take(p, r);
       tellRole(p); hello(); return;
     }
     if (m.t === "hit") { if (m.f) p.felt++; hit(p, Math.max(0.15, Math.min(1, +m.v || 0.5))); }
@@ -179,8 +179,9 @@
   // A knock: play it on the next free slot of this instrument's grid (half a beat, or a beat), at least 30 ms away.
   function hit(p, v) {
     p.knocks++;
-    const r = p.role == null ? null : roles[p.role];
-    if (!r) return;
+    for (const k of p.roles) hitOne(roles[k], v);
+  }
+  function hitOne(r, v) {
     if (!ctx || ctx.state !== "running") { flash(r, "(start the band)"); return; }
     const g = r.def.grid, bMin = beatAt(ctx.currentTime + 0.03);
     let slot = Math.ceil(bMin / g - 1e-9) * g;

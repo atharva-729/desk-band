@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Desk Band Together · Phone</title>
-<link rel="stylesheet" href="../play/phone.css?v=4">
+<link rel="stylesheet" href="../play/phone.css?v=5">
 <style>
   .role { border-radius:16px; padding:14px; text-align:center; background:var(--panel); border:2px solid var(--c, var(--line)); margin:10px 0; }
   .role .you { color:var(--dim); font-size:13px; }
@@ -50,10 +50,10 @@
     <button id="micWarn" class="warn hidden">Mic stopped: tap to turn it back on</button>
     <div class="card">
       <div class="lbl">Pick your instrument</div>
-      <div class="small">Tap any free one. First come, first served: taken ones are blacked out.</div>
+      <div class="small">Tap to turn instruments on or off: one tap plays every one that's on. Taken ones are blacked out.</div>
       <div class="picker" id="picker"></div>
     </div>
-    <div class="role" id="role"><div class="you">You are playing</div><div class="nm" id="roleName">…</div><div class="how" id="roleHow">Waiting for the stage</div></div>
+    <div class="role" id="role"><div class="you">Your taps play</div><div class="nm" id="roleName">…</div><div class="how" id="roleHow">Waiting for the stage</div></div>
     <div class="knock" id="knock">Tap the table</div>
     <div class="small" style="text-align:center;margin-top:6px" id="counts">0 taps sent</div>
     <div class="card">
@@ -61,14 +61,14 @@
       <input type="range" id="sens" min="2" max="12" step="0.5" value="4">
       <div class="small">Left = hears softer taps. Move right if it plays when you haven't tapped.</div>
       <div class="small" id="info" style="margin-top:8px"></div>
-      <div class="small">Version 4 (instrument picker)</div>
+      <div class="small">Version 5 (instrument toggles)</div>
     </div>
   </div>
 
-<script src="../play/relay.js?v=4"></script>
-<script src="link.js?v=4"></script>
-<script src="core.js?v=4"></script>
-<script src="sounds.js?v=4"></script>
+<script src="../play/relay.js?v=5"></script>
+<script src="link.js?v=5"></script>
+<script src="core.js?v=5"></script>
+<script src="sounds.js?v=5"></script>
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -166,24 +166,26 @@
       const b = document.createElement("button");
       b.dataset.k = r.key; b.style.setProperty("--c", r.color);
       b.innerHTML = `${r.name}<small></small>`;
-      b.onclick = () => { if (link.role !== r.key) link.pick(r.key); };
+      b.onclick = () => link.pick(r.key);
       $("picker").appendChild(b);
     }
     drawPicker();
   }
   function drawPicker() {
     for (const b of $("picker").children) {
-      const k = b.dataset.k, mine = link.role === k, owner = (link.who || {})[k];
+      const k = b.dataset.k, mine = (link.role || []).includes(k), owner = (link.who || {})[k];
       b.classList.toggle("mine", mine);
       b.disabled = !mine && !!owner;
-      b.querySelector("small").textContent = mine ? "you" : owner ? owner : "free";
+      b.querySelector("small").textContent = mine ? "on" : owner ? owner : "off";
     }
   }
   function showRole() {
-    const key = link.role, r = key && ROLES.find((x) => x.key === key);
-    $("role").style.setProperty("--c", r ? r.color : ""); $("knock").style.setProperty("--c", r ? r.color : "");
-    $("roleName").textContent = r ? r.name : key === null ? "No instrument free" : "…";
-    $("roleHow").textContent = r ? r.how : key === null ? "All 9 are taken. You'll be able to pick one as soon as someone leaves." : "Waiting for the stage";
+    const keys = link.role, rs = (keys || []).map((k) => ROLES.find((x) => x.key === k)).filter(Boolean);
+    const c = rs.length === 1 ? rs[0].color : "";
+    $("role").style.setProperty("--c", c); $("knock").style.setProperty("--c", rs.length ? (rs[0].color) : "");
+    $("roleName").textContent = rs.length ? rs.map((r) => r.name).join(" + ") : keys ? "Nothing on" : "…";
+    $("roleName").style.fontSize = rs.length > 2 ? "20px" : "";
+    $("roleHow").textContent = rs.length === 1 ? rs[0].how : rs.length ? `${rs.length} instruments at once` : keys ? "Turn an instrument on above." : "Waiting for the stage";
   }
   function draw() {
     const s = link.status();

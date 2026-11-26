@@ -12,7 +12,7 @@
     catch { this.id = R.newId(); }
     this.T = R.topics("band-" + this.room);
     this.c = null; this.seq = 0; this.rtt = null; this.stageAt = 0; this.tries = 0;
-    this.role = undefined;      // undefined: not told yet; null: no instrument free; else an instrument key
+    this.role = undefined;      // undefined: not told yet; else the list of instrument keys this phone plays (can be empty)
     this.who = {};              // instrument key -> name of whoever has it
     this.bpm = null; this.onrole = null; this.onhello = null;
     this._connect();
@@ -39,8 +39,11 @@
       this.send({ t: "join" });
     }).catch(() => this._retry());
   };
-  BandLink.prototype.pick = function (k) { this.send({ t: "pick", k }); };   // the stage says yes only if it's free
-  BandLink.prototype._setRole = function (r) { if (r !== this.role) { this.role = r; if (this.onrole) this.onrole(r); } };
+  BandLink.prototype.pick = function (k) { this.send({ t: "pick", k }); };   // toggle: adds it if free, drops it if it's mine
+  BandLink.prototype._setRole = function (r) {
+    r = Array.isArray(r) ? r : r ? [r] : [];
+    if (String(r) !== String(this.role)) { this.role = r; if (this.onrole) this.onrole(r); }
+  };
   BandLink.prototype._retry = function () { const ms = Math.min(8000, 1000 * Math.pow(2, this.tries++)); setTimeout(() => this._connect(), ms); };
   BandLink.prototype.send = function (msg) {
     if (!this.c || !this.c.open) return false;
