@@ -17,7 +17,7 @@
 
   function showJoin() {
     const u = new URL("phone.html", location.href);
-    u.hash = ""; u.search = `?r=${room}&b=${brokerIx}&v=8`;   // v: a new address each version, so phones don't use a cached old page
+    u.hash = ""; u.search = `?r=${room}&b=${brokerIx}&v=9`;   // v: a new address each version, so phones don't use a cached old page
     $("code").textContent = room; $("joinUrl").textContent = u.href; $("brokerName").textContent = R.BROKERS[brokerIx].name;
     try { const qr = qrcode(0, "M"); qr.addData(u.href); qr.make(); $("qr").innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true }); }
     catch { $("qr").textContent = "(QR code didn't load: open the address below on the phone)"; }
@@ -46,6 +46,59 @@
   const timeAt = (b) => t0 + b * beatSec();
   const chordAt = (b) => { const name = prog.chords[Math.floor(Math.max(0, b) / 4) % prog.chords.length]; return { name, ...B.CHORDS[name] }; };
   const M = { chord: chordAt, get beatSec() { return beatSec(); } };
+
+  // ---------- song mode: sections with their own chords and levels, then back to free play ----------
+  const SONG = B.SONG, SONG_BARS = SONG.reduce((a, s) => a + s.bars, 0);
+  let song = null;   // { bar: the bar the song starts on }
+  function secAt(b) {   // -> { s, i, bar (within the section) } or null in free play
+    if (!song) return null;
+    let k = Math.floor(b / 4) - song.bar;
+    if (k < 0 || k >= SONG_BARS) return null;
+    for (let i = 0; i < SONG.length; i++) { if (k < SONG[i].bars) return { s: SONG[i], i, bar: k }; k -= SONG[i].bars; }
+    return null;
+  }
+  const level = (r, b) => { const x = secAt(b); return x ? (x.s.lvl[r.def.key] ?? 1) : 1; };
+  const busGain = (r, b) => (r.muted ? 0 : r.def.gain * level(r, b));
+  function songBar(b, t) {   // at the start of every bar
+    if (!song) return;
+    const bar = Math.floor(b / 4) - song.bar;
+    if (bar < 0) return;
+    if (bar >= SONG_BARS) {   // the end: one last big chord, then free play again
+      V.boom(master, t, 1); V.crash(master, t, 0.9);
+      [48, 55, 60, 64, 67, 72].forEach((m, i) => V.keys(master, t + i * 0.015, m, 0.7, 3.5));
+      song = null;
+      for (const r of roles) if (r.bus) r.bus.gain.setTargetAtTime(busGain(r, b), t, 0.08);
+      return;
+    }
+    const x = secAt(b), nx = secAt(b + 4);
+    for (const r of roles) if (r.bus) r.bus.gain.setTargetAtTime(busGain(r, b), t, 0.08);
+    if (x.bar === 0 && x.s.lift) { V.boom(master, t, 0.9); V.crash(master, t, 0.7); }
+    if (nx && nx.i !== x.i && nx.s.lift) V.riser(master, t, 4 * beatSec());
+  }
+  $("song").onclick = async () => {
+    if (song) {   // stop the song: back to free play
+      song = null;
+      if (ctx) for (const r of roles) if (r.bus) r.bus.gain.setTargetAtTime(busGain(r, 0), ctx.currentTime, 0.1);
+    } else {
+      if (!ctx || ctx.state !== "running") await $("go").onclick();
+      song = { bar: Math.ceil(beatAt(ctx.currentTime + 0.2) / 4) };   // starts on the next bar
+    }
+    drawSong(); drawChords(); hello();
+  };
+  function drawSong() {
+    $("song").textContent = song ? "Stop the song" : "Play a song";
+    $("song").classList.toggle("on", !!song);
+    const x = secAt(Math.max(0, curBeat));
+    if (!song) { $("songInfo").innerHTML = `<span class="sub">Free play: the chords loop for ever. <b>Play a song</b> for an intro, verse, chorus, breakdown and a big ending.</span>`; return; }
+    if (!x) { $("songInfo").innerHTML = `<b>Get ready:</b> the song starts on the next bar`; return; }
+    $("songInfo").innerHTML = `<div class="secs">${SONG.map((s, i) => `<span class="${i === x.i ? "cur" : i < x.i ? "done" : ""}">${s.name}</span>`).join("")}</div>` +
+      `<div class="sub"><b>${x.s.tip}</b> · bar ${x.bar + 1} of ${x.s.bars}</div>`;
+  }
+  function songInfo() {
+    const x = secAt(Math.max(0, curBeat));
+    if (!x) return null;
+    return { sec: x.s.name, next: SONG[x.i + 1] ? SONG[x.i + 1].name : "the end", rest: roles.filter((r) => level(r, curBeat) === 0).map((r) => r.def.key) };
+  }
 
   B.PROGRESSIONS.forEach((p) => $("prog").insertAdjacentHTML("beforeend", `<option value="${p.id}">${p.name}</option>`));
   try { const p = B.PROGRESSIONS.find((x) => x.id === localStorage.getItem("band.prog")); if (p) prog = p; } catch {}
@@ -90,6 +143,7 @@
     if (timeAt(nextTick) < ctx.currentTime - 0.05) nextTick = Math.ceil(beatAt(ctx.currentTime) * 4) / 4;   // after a pause
     while (timeAt(nextTick) < ctx.currentTime + ahead) {
       const b = nextTick, t = timeAt(b);
+      if (b % 4 === 0) songBar(b, t);
       if (b % 1 === 0) {
         if (metroOn) { V.click(metroBus, t, b % 4 === 0); S.clicks++; }
         visual.push({ t, fn: () => showBeat(b) });
@@ -110,13 +164,14 @@
   function showBeat(b) {
     curBeat = b;
     [...$("beats").children].forEach((el, k) => el.classList.toggle("on", k === b % 4));
-    drawChords();
+    drawChords(); drawSong();
   }
   function drawChords() {
-    const bar = curBeat < 0 ? 0 : Math.floor(curBeat / 4) % prog.chords.length;
-    $("chords").innerHTML = prog.chords.map((c, k) => `<div class="${k === bar ? "cur" : ""}">${c}</div>`).join("");
+    const x = secAt(Math.max(0, curBeat)), ch = x ? x.s.chords : prog.chords;
+    const bar = x ? x.bar % ch.length : curBeat < 0 ? 0 : Math.floor(curBeat / 4) % ch.length;
+    $("chords").innerHTML = ch.map((c, k) => `<div class="${k === bar ? "cur" : ""}">${c}</div>`).join("");
   }
-  drawChords();
+  drawChords(); drawSong();
 
   // ---------- instruments and players ----------
   // First come, first served: a new phone starts on the first free instrument (so knocking works straight away) and can
@@ -125,14 +180,14 @@
   const players = new Map();   // phone id -> { id, name, roles (set of instrument indexes), seen, knocks, felt, rtt }
   const roleByKey = (k) => roles.find((r) => r.def.key === k);
   S.players = players; S.roles = roles;
-  function makeBus(r) { const g = ctx.createGain(); g.gain.value = r.muted ? 0 : r.def.gain; g.connect(master); return g; }
+  function makeBus(r) { const g = ctx.createGain(); g.gain.value = busGain(r, 0); g.connect(master); return g; }
   roles.forEach((r) => {
     const el = document.createElement("div");
     el.className = "rc free"; el.style.setProperty("--c", r.def.color);
     el.innerHTML = `<div class="flash"></div><div class="h"><span class="num">${r.k + 1}</span><span class="nm">${r.def.name}</span><button class="ghost mute">Mute</button></div>
       <div class="who"></div><div class="last">–</div><div class="how">${r.def.how}</div><div class="st"></div>`;
     r.el = el; r.q = (s) => el.querySelector(s);
-    r.q(".mute").onclick = () => { r.muted = !r.muted; r.q(".mute").textContent = r.muted ? "Muted" : "Mute"; r.q(".mute").classList.toggle("muted", r.muted); if (r.bus) r.bus.gain.setTargetAtTime(r.muted ? 0 : r.def.gain, ctx.currentTime, 0.03); };
+    r.q(".mute").onclick = () => { r.muted = !r.muted; r.q(".mute").textContent = r.muted ? "Muted" : "Mute"; r.q(".mute").classList.toggle("muted", r.muted); if (r.bus) r.bus.gain.setTargetAtTime(busGain(r, beatAt(ctx.currentTime)), ctx.currentTime, 0.03); };
     $("roles").appendChild(el);
   });
   // A phone can hold several instruments at once: one tap plays all of them. Tapping a free one adds it, tapping one
@@ -155,7 +210,7 @@
     const map = {}, who = {};
     for (const p of players.values()) map[p.id] = keysOf(p);
     for (const r of roles) if (r.player) { const p = players.get(r.player); who[r.def.key] = (p && p.name) || "someone"; }
-    send(T.stage, { t: "hello", bpm, roles: map, who, full: roles.every((r) => r.player) });
+    send(T.stage, { t: "hello", bpm, roles: map, who, full: roles.every((r) => r.player), song: songInfo() });
   }
   setInterval(hello, 1000);
 
@@ -205,7 +260,8 @@
     for (const r of roles) {
       const p = r.player ? players.get(r.player) : null;
       r.el.classList.toggle("free", !p);
-      r.q(".who").textContent = p ? (p.name || "Player") : "Free: anyone can pick this";
+      r.el.classList.toggle("rest", !!song && level(r, curBeat) === 0);
+      r.q(".who").textContent = (p ? (p.name || "Player") : "Free: anyone can pick this") + (song && level(r, curBeat) === 0 ? " · rests in this part" : "");
       r.q(".st").textContent = !p ? "" : (now - p.seen > QUIET_MS ? "not heard from for a while · " : "") +
         `${p.knocks} knocks` + (p.felt ? ` (${p.felt} felt, not heard)` : "") + (p.rtt != null ? ` · lag ≈ ${Math.round(p.rtt / 2)} ms` : "");
     }

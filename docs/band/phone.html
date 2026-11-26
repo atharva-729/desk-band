@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Desk Band Together · Phone</title>
-<link rel="stylesheet" href="../play/phone.css?v=8">
+<link rel="stylesheet" href="../play/phone.css?v=9">
 <style>
   .role { border-radius:16px; padding:14px; text-align:center; background:var(--panel); border:2px solid var(--c, var(--line)); margin:10px 0; }
   .role .you { color:var(--dim); font-size:13px; }
@@ -54,6 +54,7 @@
       <div class="picker" id="picker"></div>
     </div>
     <div class="role" id="role"><div class="you">Your taps play</div><div class="nm" id="roleName">…</div><div class="how" id="roleHow">Waiting for the stage</div></div>
+    <div class="small" id="songTxt" style="text-align:center;margin:-4px 0 8px;font-size:14px"></div>
     <div class="knock" id="knock">Tap the table</div>
     <div class="small" style="text-align:center;margin-top:6px" id="counts">0 taps sent</div>
     <div class="card">
@@ -61,14 +62,14 @@
       <input type="range" id="sens" min="2" max="12" step="0.5" value="4">
       <div class="small">Left = hears softer taps. Move right if it plays when you haven't tapped.</div>
       <div class="small" id="info" style="margin-top:8px"></div>
-      <div class="small">Version 8 (8 instruments)</div>
+      <div class="small">Version 9 (song mode)</div>
     </div>
   </div>
 
-<script src="../play/relay.js?v=8"></script>
-<script src="link.js?v=8"></script>
-<script src="core.js?v=8"></script>
-<script src="sounds.js?v=8"></script>
+<script src="../play/relay.js?v=9"></script>
+<script src="link.js?v=9"></script>
+<script src="core.js?v=9"></script>
+<script src="sounds.js?v=9"></script>
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -191,6 +192,10 @@
     const s = link.status();
     $("link").className = "link " + s.state; $("linkTxt").textContent = s.text;
     $("micWarn").classList.toggle("hidden", micOK());
+    const sg = link.song, mine = link.role || [];
+    $("songTxt").innerHTML = !sg ? "" : mine.length && mine.every((k) => sg.rest.includes(k))
+      ? `Song: <b>${sg.sec}</b>. Your part rests: come back in at <b>${sg.next}</b>`
+      : `Song: <b>${sg.sec}</b> · next: ${sg.next}`;
     $("counts").textContent = `${st.sent} taps sent` + (st.felt ? ` (${st.felt} felt, not heard)` : "");
   }
 })();

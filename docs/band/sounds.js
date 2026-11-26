@@ -88,6 +88,13 @@
         lp.type = "lowpass"; lp.frequency.setValueAtTime(1200 + 2500 * v, t); lp.frequency.exponentialRampToValueAtTime(500, t + 0.25);
         env(g, t, 0.13 * v + 0.03, 0.3); x.connect(lp).connect(g).connect(o); x.start(t); x.stop(t + 0.35);
       },
+      riser: (o, t, dur) => {   // a whoosh that builds into the next section
+        const s = noise(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+        f.type = "bandpass"; f.Q.value = 3; f.frequency.setValueAtTime(300, t); f.frequency.exponentialRampToValueAtTime(8000, t + dur);
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.35, t + dur * 0.97); g.gain.linearRampToValueAtTime(0, t + dur);
+        s.loop = true; s.connect(f).connect(g).connect(o); s.start(t); s.stop(t + dur + 0.05);
+      },
+      boom: (o, t, v) => tone(o, t, "sine", 90, 32, 1.6, v, 1.0),
       click: (o, t, accent) => {
         const x = ctx.createOscillator(), g = ctx.createGain();
         x.frequency.value = accent ? 1600 : 1000; env(g, t, accent ? 0.35 : 0.22, 0.05, 0.001);
@@ -172,7 +179,26 @@
       } },
   ];
 
-  const api = { ROLES, CHORDS, PROGRESSIONS, PENTA, Voices, mtof, noteName, inRange };
+  // ---------- a song: sections with their own chords and levels (1 = normal, 0 = that instrument rests) ----------
+  // lift: a whoosh in the bar before it, and a boom + crash on its first beat.
+  const SONG = [
+    { name: "Intro", bars: 4, chords: ["Am", "F", "C", "G"], tip: "Soft start: piano, marimba and arpeggiator only",
+      lvl: { drums: 0, shakers: 0, desi: 0, bass: 0, synth: 0 } },
+    { name: "Verse", bars: 8, chords: ["C", "G", "Am", "F"], tip: "Everyone in, not too loud",
+      lvl: { drums: 0.7, shakers: 0.6, desi: 0.6, synth: 0.7 } },
+    { name: "Build-up", bars: 4, chords: ["Dm", "Em", "F", "G"], tip: "Build up: knock faster and harder!",
+      lvl: { drums: 0.9, marimba: 0.8 } },
+    { name: "Chorus", bars: 8, chords: ["F", "G", "C", "Am"], tip: "Chorus: everybody, full power", lift: true,
+      lvl: { drums: 1.1, synth: 1.15 } },
+    { name: "Breakdown", bars: 4, chords: ["Am", "Em", "F", "G"], tip: "Breakdown: drums, shakers and synth rest",
+      lvl: { drums: 0, shakers: 0, synth: 0, desi: 0.6 } },
+    { name: "Last chorus", bars: 8, chords: ["F", "G", "C", "Am"], tip: "Last chorus: the biggest of all", lift: true,
+      lvl: { drums: 1.15, synth: 1.2, shakers: 1.1 } },
+    { name: "Outro", bars: 4, chords: ["F", "G", "C", "C"], tip: "Wind down: a big final chord at the end",
+      lvl: { drums: 0.5, shakers: 0.4, desi: 0.4, synth: 0.6 } },
+  ];
+
+  const api = { ROLES, CHORDS, PROGRESSIONS, PENTA, SONG, Voices, mtof, noteName, inRange };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.BandMusic = api;
 })(typeof window !== "undefined" ? window : globalThis);

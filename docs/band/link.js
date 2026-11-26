@@ -27,7 +27,7 @@
       c.onmessage = (topic, s) => {
         let m; try { m = JSON.parse(s); } catch { return; }
         if (m.t === "hello") {
-          this.stageAt = performance.now(); this.bpm = m.bpm; this.who = m.who || {};
+          this.stageAt = performance.now(); this.bpm = m.bpm; this.who = m.who || {}; this.song = m.song || null;
           if (this.id in (m.roles || {})) this._setRole(m.roles[this.id]);
           else this.send({ t: "join" });          // the stage doesn't know this phone (yet, or it reloaded)
           if (this.onhello) this.onhello();
