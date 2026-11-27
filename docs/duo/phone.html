@@ -81,18 +81,19 @@
     </div>
     <div class="card">
       <div class="lbl">Sensitivity <span id="sensTxt"></span></div>
-      <input type="range" id="sens" min="2" max="12" step="0.5" value="4">
-      <div class="small">Left = hears softer taps. Move right if it plays when you haven't tapped.</div>
+      <input type="range" id="sens" min="3" max="40" step="1" value="10">
+      <div class="small">Move right if it counts taps you didn't make (or one tap twice). Left = hears softer taps.</div>
+      <label class="small" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="feltOn"> Also count taps the mic misses but the phone feels (always played as the table)</label>
       <div class="small" id="info" style="margin-top:8px"></div>
-      <div class="small">Desk Band Duo · version 1</div>
+      <div class="small">Desk Band Duo · version 2 (fewer extra taps)</div>
     </div>
   </div>
 
 <script src="../play/relay.js?v=10"></script>
-<script src="link.js?v=1"></script>
+<script src="link.js?v=2"></script>
 <script src="../band/core.js?v=10"></script>
 <script src="../band/sounds.js?v=10"></script>
-<script src="instruments.js?v=1"></script>
+<script src="instruments.js?v=2"></script>
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -105,8 +106,9 @@
   $("roomTxt").textContent = room || "–";
   $("typeRoom").classList.toggle("hidden", !!room);
   $("code").oninput = () => { room = Relay.cleanRoom($("code").value); $("roomTxt").textContent = room || "–"; };
-  try { const s = localStorage.getItem("band.sens2"); if (s) $("sens").value = s; } catch {}
-  $("sens").oninput = () => { $("sensTxt").textContent = "· " + $("sens").value; if (det) det.thrMult = +$("sens").value; try { localStorage.setItem("band.sens2", $("sens").value); } catch {} };
+  try { const s = localStorage.getItem("duo.sens"); if (s) $("sens").value = s; $("feltOn").checked = localStorage.getItem("duo.felt") === "1"; } catch {}
+  $("sens").oninput = () => { $("sensTxt").textContent = "· " + $("sens").value; if (det) det.thrMult = +$("sens").value; try { localStorage.setItem("duo.sens", $("sens").value); } catch {} };
+  $("feltOn").onchange = () => { try { localStorage.setItem("duo.felt", $("feltOn").checked ? "1" : "0"); } catch {} };
   $("sens").oninput();
 
   // ---- the saved model (the two sounds this phone learned), kept on this phone only ----
@@ -145,7 +147,9 @@
 
   // ---- playing: heard taps are sorted into table or laptop; a jolt the mic missed counts as the table ----
   let last = { t: -1e9, src: null };
+  const MIN_GAP = 150;   // ms: one tap can ring or rattle; anything this close after a tap is the same tap
   function send(src, t, v, zone, prob) {
+    if (t - last.t < MIN_GAP) return;
     last = { t, src };
     const z = zone === LAPTOP ? "l" : "t";
     if (link) link.send({ t: "hit", v: Math.round(v * 100) / 100, z, f: src === "felt" ? 1 : 0 });
@@ -163,7 +167,7 @@
   const JOLT_MIN = 0.05;
   let base = 0.01, prev = 0, pending = null, grav = null;
   function onMotion(e) {
-    if (training || !model) return;
+    if (training || !model || !$("feltOn").checked) return;
     const now = performance.now();
     let x, y, z;
     if (e.acceleration && e.acceleration.x != null) ({ x, y, z } = e.acceleration);
@@ -172,7 +176,7 @@
       grav = grav ? grav.map((v, i) => v + 0.1 * ([g.x, g.y, g.z][i] - v)) : [g.x, g.y, g.z];
       x = g.x - grav[0]; y = g.y - grav[1]; z = g.z - grav[2];
     } else return;
-    const m = Math.hypot(x, y, z), thr = Math.max(JOLT_MIN, 4 * base);
+    const m = Math.hypot(x, y, z), thr = Math.max(JOLT_MIN, 4 * base) * (+$("sens").value / 4);   // the slider moves this too
     if (pending) pending.m = Math.max(pending.m, m);
     else if (m > thr && m > 2 * prev && now - last.t > 150) {
       pending = { t: now, m };
@@ -215,7 +219,7 @@
     ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: "interactive" });
     await ctx.resume();
     const src = ctx.createMediaStreamSource(stream), proc = ctx.createScriptProcessor(256, 1, 1);
-    det = new DeskCore.Detector(ctx.sampleRate, { thrMult: +$("sens").value, postMs: 45 });   // 45 ms: long enough to hear WHERE
+    det = new DeskCore.Detector(ctx.sampleRate, { thrMult: +$("sens").value, postMs: 45, refractoryMs: 150 });   // 45 ms: long enough to hear WHERE
     proc.onaudioprocess = (e) => { lastAudio = performance.now(); det.process(e.inputBuffer.getChannelData(0), performance.now(), onHeard); };
     src.connect(proc); proc.connect(ctx.destination);
     mic = { stream, src, proc, label: stream.getAudioTracks()[0].label || "mic" };
