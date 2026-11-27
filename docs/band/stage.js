@@ -17,7 +17,7 @@
 
   function showJoin() {
     const u = new URL("phone.html", location.href);
-    u.hash = ""; u.search = `?r=${room}&b=${brokerIx}&v=9`;   // v: a new address each version, so phones don't use a cached old page
+    u.hash = ""; u.search = `?r=${room}&b=${brokerIx}&v=10`;   // v: a new address each version, so phones don't use a cached old page
     $("code").textContent = room; $("joinUrl").textContent = u.href; $("brokerName").textContent = R.BROKERS[brokerIx].name;
     try { const qr = qrcode(0, "M"); qr.addData(u.href); qr.make(); $("qr").innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true }); }
     catch { $("qr").textContent = "(QR code didn't load: open the address below on the phone)"; }
@@ -190,8 +190,7 @@
     r.q(".mute").onclick = () => { r.muted = !r.muted; r.q(".mute").textContent = r.muted ? "Muted" : "Mute"; r.q(".mute").classList.toggle("muted", r.muted); if (r.bus) r.bus.gain.setTargetAtTime(busGain(r, beatAt(ctx.currentTime)), ctx.currentTime, 0.03); };
     $("roles").appendChild(el);
   });
-  // A phone can hold several instruments at once: one tap plays all of them. Tapping a free one adds it, tapping one
-  // of your own drops it. Others' instruments are off limits (first come, first served).
+  // One instrument per phone. Tapping a free one switches to it; others' instruments are off limits (first come, first served).
   function take(p, r) { r.player = p.id; r.mem = {}; r.lastSlot = -1e9; p.roles.add(r.k); }
   function drop(p, r) { if (r.player === p.id) r.player = null; p.roles.delete(r.k); }
   function assign(p) { if (!p.roles.size) { const r = roles.find((x) => !x.player); if (r) take(p, r); } }
@@ -223,9 +222,9 @@
     if (m.rtt != null) p.rtt = m.rtt;
     if (m.t === "ping") { send(T.to(id), { t: "pong", ts: m.ts }); return; }
     if (m.t === "join") { assign(p); tellRole(p); return; }
-    if (m.t === "pick") {   // toggle an instrument: add it if free, drop it if it's yours
+    if (m.t === "pick") {   // switch to another instrument, only a free one: one instrument per person
       const r = roleByKey(m.k);
-      if (r && r.player === id) drop(p, r); else if (r && !r.player) take(p, r);
+      if (r && !r.player) { for (const k of [...p.roles]) drop(p, roles[k]); take(p, r); }
       tellRole(p); hello(); return;
     }
     if (m.t === "hit") { if (m.f) p.felt++; hit(p, Math.max(0.15, Math.min(1, +m.v || 0.5))); }
