@@ -119,6 +119,19 @@ lays their phone on their own table and knocks next to it; the stage page plays 
 - **Next:** Spots mode (each person trains 4 spots, 2 on the laptop, 2 on the table; room for 5 for pentatonic), and
   WebRTC for the drums if the lag turns out to matter.
 
+## Desk Band Duo: two sounds each, table or laptop (online)
+
+**Stage:** https://atharva-729.github.io/desk-band/duo/ (separate from Desk Band Together; same relay, same beat grid, its own rooms)
+
+- Each person plays one instrument with **two sounds**: tap the **table** for one, the **laptop** (palm rest) for the
+  other. Drums: kick and snare. Synth and marimba: you steer the tune (table = down, laptop = up). Bass: root and fifth.
+  Piano: low chord and high stab. Shakers: clap and shaker. Dhol & tabla: dhol and tabla. Arpeggiator: low and high runs.
+- **The phone learns the two sounds first:** 8 prompted taps on the laptop and 8 on the table (the prompts give the
+  labels), then Desk Band's own classifier (18-band sound shape, logistic regression) sorts every tap. The model stays on
+  the phone. A jolt the mic missed counts as the table.
+- **Accuracy is not measured yet.** The phone shows how many of its own training taps it sorts right: that number is
+  optimistic. A separate prompted check round is still needed for a real figure.
+
 ## Run it (v0)
 
 Needs Python 3.9+ on the laptop. The certificate is made automatically. If that fails: `pip install cryptography`.

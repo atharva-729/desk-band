@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Desk Band Duo · Phone</title>
+<link rel="stylesheet" href="../play/phone.css?v=10">
+<style>
+  .role { border-radius:16px; padding:14px; text-align:center; background:var(--panel); border:2px solid var(--c, var(--line)); margin:10px 0; }
+  .role .you { color:var(--dim); font-size:13px; }
+  .role .nm { font-size:30px; font-weight:800; color:var(--c, var(--ink)); line-height:1.15; }
+  .role .how { color:var(--dim); font-size:13px; margin-top:6px; }
+  .zones { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .zone { height:110px; border-radius:16px; background:#101218; border:2px solid var(--line); display:flex; flex-direction:column; align-items:center; justify-content:center;
+          font-size:20px; font-weight:800; color:var(--dim); transition:background .3s, color .3s; text-align:center; padding:6px; }
+  .zone small { font-size:13px; font-weight:600; margin-top:4px; }
+  .zone.sent { background:var(--c, var(--ok)); color:#101218; transition:none; }
+  .room { font-size:26px; font-weight:800; letter-spacing:3px; }
+  .picker { display:grid; grid-template-columns:repeat(2, 1fr); gap:8px; margin:8px 0 4px; }
+  .picker button { padding:9px 4px; font-size:13px; line-height:1.25; border-color:var(--line); }
+  .picker button small { display:block; font-weight:400; font-size:11px; color:var(--dim); }
+  .picker button.mine { background:var(--c); border-color:var(--c); color:#101218; }
+  .picker button.mine small { color:#101218; }
+  .picker button:disabled { opacity:1; background:#050608; color:#3a3e4a; border-color:#15171e; text-decoration:line-through; }
+  .picker button:disabled small { text-decoration:none; color:#4a4f5c; }
+  .prompt { border-radius:16px; padding:22px 12px; text-align:center; background:var(--panel); border:3px solid var(--warn); margin:10px 0; }
+  .prompt .big { font-size:34px; font-weight:800; line-height:1.1; }
+  .prompt .where { color:var(--dim); font-size:14px; margin-top:6px; }
+  .dots { display:flex; gap:6px; justify-content:center; margin-top:14px; flex-wrap:wrap; }
+  .dots i { width:14px; height:14px; border-radius:50%; background:#20242f; display:block; }
+  .dots i.done { background:var(--ok); } .dots i.now { background:var(--warn); }
+</style>
+</head>
+<body>
+  <div class="link" id="link"><i></i><span id="linkTxt">Not started</span></div>
+  <h1>Desk Band Duo</h1>
+  <div class="sub">Two sounds: tap the <b>table</b> for one, the <b>laptop</b> for the other. The band on the shared screen plays it, on the beat.</div>
+
+  <div id="intro">
+    <div class="card">
+      <div class="lbl">Room</div>
+      <div class="room" id="roomTxt">–</div>
+      <div id="typeRoom" class="hidden"><div class="row"><input type="text" id="code" placeholder="Room code from the shared screen" autocapitalize="characters" autocomplete="off" maxlength="8"></div></div>
+      <div class="lbl" style="margin-top:12px">Your name on the stage</div>
+      <div class="row" style="margin-bottom:0"><input type="text" id="name" placeholder="e.g. Sam" maxlength="24" autocomplete="off"></div>
+    </div>
+    <div class="card small">
+      <ul style="margin:0;padding-left:18px">
+        <li>Lay the phone <b>flat on your table, right next to your laptop</b>, screen up.</li>
+        <li>First the phone learns your two sounds: <b>8 taps on the laptop</b> (palm rest, beside the keyboard) and <b>8 on the table</b>. About 30 seconds.</li>
+        <li><b>Don't join the call on this phone</b>, and wear <b>headphones</b> on the laptop so the phone doesn't hear the band.</li>
+      </ul>
+    </div>
+    <button id="start" class="primary">Start</button>
+  </div>
+
+  <div id="train" class="hidden">
+    <div class="prompt"><div class="big" id="pBig">…</div><div class="where" id="pWhere"></div><div class="dots" id="dots"></div></div>
+    <div class="small" style="text-align:center" id="pNote">Tap firmly, the same way you'll play. Keep the phone where it is.</div>
+    <button class="ghost" id="redo" style="margin-top:10px">Start the taps again</button>
+  </div>
+
+  <div id="main" class="hidden">
+    <button id="micWarn" class="warn hidden">Mic stopped: tap to turn it back on</button>
+    <div class="role" id="role"><div class="you">You are playing</div><div class="nm" id="roleName">…</div><div class="how" id="roleHow">Waiting for the stage</div></div>
+    <div class="small" id="songTxt" style="text-align:center;margin:-4px 0 8px;font-size:14px"></div>
+    <div class="zones">
+      <div class="zone" id="zt">TABLE<small id="ztS"></small></div>
+      <div class="zone" id="zl">LAPTOP<small id="zlS"></small></div>
+    </div>
+    <div class="small" style="text-align:center;margin-top:6px" id="counts">0 taps sent</div>
+    <div class="card">
+      <div class="lbl">Pick your instrument</div>
+      <div class="small">One instrument each. Tap any free one to switch. Taken ones are blacked out.</div>
+      <div class="picker" id="picker"></div>
+    </div>
+    <div class="card">
+      <div class="lbl">Mixing up table and laptop?</div>
+      <div class="small" id="trainInfo"></div>
+      <button class="ghost" id="retrain" style="margin-top:8px">Teach the two sounds again</button>
+    </div>
+    <div class="card">
+      <div class="lbl">Sensitivity <span id="sensTxt"></span></div>
+      <input type="range" id="sens" min="2" max="12" step="0.5" value="4">
+      <div class="small">Left = hears softer taps. Move right if it plays when you haven't tapped.</div>
+      <div class="small" id="info" style="margin-top:8px"></div>
+      <div class="small">Desk Band Duo · version 1</div>
+    </div>
+  </div>
+
+<script src="../play/relay.js?v=10"></script>
+<script src="link.js?v=1"></script>
+<script src="../band/core.js?v=10"></script>
+<script src="../band/sounds.js?v=10"></script>
+<script src="instruments.js?v=1"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const q = new URLSearchParams(location.search);
+  const ROLES = DuoMusic.ROLES;
+  const TABLE = 0, LAPTOP = 1;
+  let room = Relay.cleanRoom(q.get("r")), link = null, det = null, ctx = null, mic = null, model = null;
+  const st = window.__duo = { sent: 0, table: 0, laptop: 0, felt: 0 };
+  try { $("name").value = q.get("n") || localStorage.getItem("pb.name") || ""; } catch {}
+  $("roomTxt").textContent = room || "–";
+  $("typeRoom").classList.toggle("hidden", !!room);
+  $("code").oninput = () => { room = Relay.cleanRoom($("code").value); $("roomTxt").textContent = room || "–"; };
+  try { const s = localStorage.getItem("band.sens2"); if (s) $("sens").value = s; } catch {}
+  $("sens").oninput = () => { $("sensTxt").textContent = "· " + $("sens").value; if (det) det.thrMult = +$("sens").value; try { localStorage.setItem("band.sens2", $("sens").value); } catch {} };
+  $("sens").oninput();
+
+  // ---- the saved model (the two sounds this phone learned), kept on this phone only ----
+  try { const j = JSON.parse(localStorage.getItem("duo.model") || "null"); if (j && j.W) model = Object.assign(new DeskCore.Model(), j); } catch {}
+  const saveModel = () => { try { localStorage.setItem("duo.model", JSON.stringify({ classes: model.classes, mu: model.mu, sd: model.sd, W: model.W, b: model.b, fit_: model.fit_ })); } catch {} };
+
+  // ---- training: the prompts give the labels (laptop ×4, table ×4, twice over) ----
+  const PLAN = [LAPTOP, LAPTOP, LAPTOP, LAPTOP, TABLE, TABLE, TABLE, TABLE, LAPTOP, LAPTOP, LAPTOP, LAPTOP, TABLE, TABLE, TABLE, TABLE];
+  let training = null;   // { X, Y, k, lastMs }
+  function startTraining() {
+    training = { X: [], Y: [], k: 0, lastMs: -1e9 };
+    $("intro").classList.add("hidden"); $("main").classList.add("hidden"); $("train").classList.remove("hidden");
+    drawPrompt();
+  }
+  function drawPrompt() {
+    const z = PLAN[training.k];
+    $("pBig").textContent = z === LAPTOP ? "Tap the LAPTOP" : "Tap the TABLE";
+    $("pWhere").textContent = z === LAPTOP ? "the palm rest, beside the keyboard" : "right next to the phone";
+    $("dots").innerHTML = PLAN.map((_, i) => `<i class="${i < training.k ? "done" : i === training.k ? "now" : ""}"></i>`).join("");
+  }
+  function trainTap(h) {
+    if (h.wallMs - training.lastMs < 300) return;   // one tap's echo, not a new tap
+    training.lastMs = h.wallMs;
+    training.X.push(DeskCore.audioFeatures(h.seg, ctx.sampleRate)); training.Y.push(PLAN[training.k]);
+    training.k++;
+    if (navigator.vibrate) navigator.vibrate(30);
+    if (training.k < PLAN.length) { drawPrompt(); return; }
+    model = new DeskCore.Model().fit(training.X, training.Y);
+    const right = training.X.filter((x, i) => model.predict(x).zone === training.Y[i]).length;
+    model.fit_ = `${right} of ${training.X.length}`;   // on the same taps it learned from: an optimistic number
+    saveModel(); training = null;
+    showMain();
+  }
+  $("redo").onclick = () => startTraining();
+  $("retrain").onclick = () => startTraining();
+
+  // ---- playing: heard taps are sorted into table or laptop; a jolt the mic missed counts as the table ----
+  let last = { t: -1e9, src: null };
+  function send(src, t, v, zone, prob) {
+    last = { t, src };
+    const z = zone === LAPTOP ? "l" : "t";
+    if (link) link.send({ t: "hit", v: Math.round(v * 100) / 100, z, f: src === "felt" ? 1 : 0 });
+    st.sent++; st[zone === LAPTOP ? "laptop" : "table"]++; if (src === "felt") st.felt++;
+    const el = $(zone === LAPTOP ? "zl" : "zt"); el.classList.remove("sent"); void el.offsetWidth; el.classList.add("sent");
+    $(zone === LAPTOP ? "zlS" : "ztS").textContent = src === "felt" ? "felt" : prob != null ? `sure: ${Math.round(prob * 100)}%` : "";
+  }
+  function onHeard(h) {
+    if (training) { trainTap(h); return; }
+    if (!model || $("main").classList.contains("hidden")) return;
+    if (last.src === "felt" && Math.abs(h.wallMs - last.t) < 150) return;
+    const p = model.predict(DeskCore.audioFeatures(h.seg, ctx.sampleRate));
+    send("heard", h.wallMs, Math.max(0.15, Math.min(1, Math.log10(h.peakAmp / h.thr + 1) / 1.3)), p.zone, p.prob);
+  }
+  const JOLT_MIN = 0.05;
+  let base = 0.01, prev = 0, pending = null, grav = null;
+  function onMotion(e) {
+    if (training || !model) return;
+    const now = performance.now();
+    let x, y, z;
+    if (e.acceleration && e.acceleration.x != null) ({ x, y, z } = e.acceleration);
+    else if (e.accelerationIncludingGravity && e.accelerationIncludingGravity.x != null) {
+      const g = e.accelerationIncludingGravity;
+      grav = grav ? grav.map((v, i) => v + 0.1 * ([g.x, g.y, g.z][i] - v)) : [g.x, g.y, g.z];
+      x = g.x - grav[0]; y = g.y - grav[1]; z = g.z - grav[2];
+    } else return;
+    const m = Math.hypot(x, y, z), thr = Math.max(JOLT_MIN, 4 * base);
+    if (pending) pending.m = Math.max(pending.m, m);
+    else if (m > thr && m > 2 * prev && now - last.t > 150) {
+      pending = { t: now, m };
+      setTimeout(() => {   // the mic needs a little longer here (it listens ~50 ms to tell table from laptop)
+        const p = pending; pending = null;
+        if (last.src === "heard" && Math.abs(last.t - p.t) < 200) return;
+        send("felt", p.t, Math.max(0.2, Math.min(1, p.m / 0.5)), TABLE, null);
+      }, 140);
+    }
+    if (m < thr) base = base * 0.98 + m * 0.02;
+    prev = m;
+  }
+
+  $("start").onclick = async () => {
+    if (!room) { alert("Type the room code from the shared screen first."); return; }
+    const name = $("name").value.trim().slice(0, 24);
+    try { localStorage.setItem("pb.name", name); } catch {}
+    try { if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") await DeviceMotionEvent.requestPermission(); } catch {}
+    window.addEventListener("devicemotion", onMotion);
+    try { await startMic(); } catch (err) { alert("Could not start the microphone: " + err.message + "\n\nAllow the microphone for this page and try again."); return; }
+    try { if ("wakeLock" in navigator) await navigator.wakeLock.request("screen"); } catch {}
+    link = new BandLink(room, q.get("b"), name);
+    st.link = link; st.det = det;
+    link.onrole = () => { showRole(); drawPicker(); };
+    link.onhello = drawPicker;
+    $("info").textContent = `${mic.label} · ${(ctx.sampleRate / 1000).toFixed(1)} kHz`;
+    buildPicker();
+    setInterval(draw, 250);
+    if (model) showMain(); else startTraining();
+  };
+  function showMain() {
+    $("intro").classList.add("hidden"); $("train").classList.add("hidden"); $("main").classList.remove("hidden");
+    $("trainInfo").textContent = model && model.fit_
+      ? `Learned from your 16 taps (it sorts ${model.fit_} of them right, but that's on the same taps, so real play is a bit worse). If it mixes them up, teach it again with the phone where it'll stay.`
+      : "Learned earlier on this phone. If it mixes them up, teach it again.";
+  }
+
+  async function startMic() {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 } });
+    ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: "interactive" });
+    await ctx.resume();
+    const src = ctx.createMediaStreamSource(stream), proc = ctx.createScriptProcessor(256, 1, 1);
+    det = new DeskCore.Detector(ctx.sampleRate, { thrMult: +$("sens").value, postMs: 45 });   // 45 ms: long enough to hear WHERE
+    proc.onaudioprocess = (e) => { lastAudio = performance.now(); det.process(e.inputBuffer.getChannelData(0), performance.now(), onHeard); };
+    src.connect(proc); proc.connect(ctx.destination);
+    mic = { stream, src, proc, label: stream.getAudioTracks()[0].label || "mic" };
+    lastAudio = performance.now();
+  }
+  let lastAudio = 0;
+  const micOK = () => ctx && ctx.state === "running" && performance.now() - lastAudio < 700;
+  $("micWarn").onclick = async () => { try { await ctx.resume(); } catch {} };
+  document.addEventListener("click", () => { if (ctx && !micOK()) ctx.resume().catch(() => {}); }, true);
+
+  // ---- instruments ----
+  function buildPicker() {
+    $("picker").innerHTML = "";
+    for (const r of ROLES) {
+      const b = document.createElement("button");
+      b.dataset.k = r.key; b.style.setProperty("--c", r.color);
+      b.innerHTML = `${r.name}<small></small>`;
+      b.onclick = () => link.pick(r.key);
+      $("picker").appendChild(b);
+    }
+    drawPicker();
+  }
+  function drawPicker() {
+    for (const b of $("picker").children) {
+      const k = b.dataset.k, mine = (link.role || []).includes(k), owner = (link.who || {})[k];
+      b.classList.toggle("mine", mine);
+      b.disabled = !mine && !!owner;
+      b.querySelector("small").textContent = mine ? "you" : owner ? owner : "free";
+    }
+  }
+  function showRole() {
+    const keys = link.role || [], r = ROLES.find((x) => x.key === keys[0]);
+    for (const id of ["role", "zt", "zl"]) $(id).style.setProperty("--c", r ? r.color : "");
+    $("roleName").textContent = r ? r.name : link.role ? "No instrument free" : "…";
+    $("roleHow").textContent = r ? r.how : link.role ? "All 8 are taken. You can pick one as soon as someone leaves." : "Waiting for the stage";
+    $("zt").firstChild.textContent = r ? `TABLE: ${r.table}` : "TABLE";
+    $("zl").firstChild.textContent = r ? `LAPTOP: ${r.laptop}` : "LAPTOP";
+  }
+  function draw() {
+    const s = link.status();
+    $("link").className = "link " + s.state; $("linkTxt").textContent = s.text;
+    $("micWarn").classList.toggle("hidden", micOK());
+    const sg = link.song, mine = link.role || [];
+    $("songTxt").innerHTML = !sg ? "" : mine.length && mine.every((k) => sg.rest.includes(k))
+      ? `Song: <b>${sg.sec}</b>. Your part rests: come back in at <b>${sg.next}</b>`
+      : `Song: <b>${sg.sec}</b> · next: ${sg.next}`;
+    $("counts").textContent = `${st.sent} taps sent: ${st.table} table, ${st.laptop} laptop` + (st.felt ? ` (${st.felt} felt, not heard)` : "");
+  }
+})();
+</script>
+</body>
+</html>
